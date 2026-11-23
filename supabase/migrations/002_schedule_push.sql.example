@@ -1,0 +1,49 @@
+-- ==========================================================================
+-- DAYMATE — schedule the push sender (run ONCE, manually, after deploying the
+-- Edge Function and setting its secrets). This is an .example file so it is
+-- never run by accident: copy it, replace the three placeholders, then run it
+-- in the Supabase SQL editor.
+--
+--   <PROJECT_REF>   your project reference, e.g. abcdefghijklmnop
+--   <CRON_SECRET>   the same long random string you set as the CRON_SECRET
+--                   Edge Function secret
+--
+-- First enable the extensions: Dashboard → Database → Extensions →
+-- pg_cron and pg_net.
+-- ==========================================================================
+
+-- Keep the secret in Vault so it never appears in cron job text or logs.
+select vault.create_secret('<CRON_SECRET>', 'daymate_cron_secret');
+
+select cron.schedule(
+  'daymate-send-notifications',
+  '* * * * *',                       -- every minute
+  $$
+  select net.http_post(
+    url     := 'https://<PROJECT_REF>.supabase.co/functions/v1/send-due-notifications',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'daymate_cron_secret')
+    ),
+    body    := '{}'::jsonb,
+    timeout_milliseconds := 20000
+  );
+  $$
+);
+
+-- To stop it:   select cron.unschedule('daymate-send-notifications');
+-- To inspect:   select * from cron.job_run_details order by start_time desc limit 20;
+
+-- Privacy housekeeping: permanently remove rows people deleted more than 30 days ago.
+select cron.schedule(
+  'daymate-purge-deleted',
+  '17 3 * * *',
+  $$
+  delete from public.tasks          where deleted_at < now() - interval '30 days';
+  delete from public.appointments   where deleted_at < now() - interval '30 days';
+  delete from public.reminders      where deleted_at < now() - interval '30 days';
+  delete from public.shopping_items where deleted_at < now() - interval '30 days';
+  delete from public.household_info where deleted_at < now() - interval '30 days';
+  delete from public.memories       where deleted_at < now() - interval '30 days';
+  $$
+);

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   DAYMATE — app.js (Stage 1)
+   DAYMATE — app.js (Part 2)
    --------------------------------------------------------------------------
    One file, organised into clearly separated modules so it can be split into
    ES modules later (js/store.js, js/entitlements.js …) with no logic changes.
@@ -7,20 +7,22 @@
    MODULE MAP
      1.  Config            App constants, feature catalogue, preview content
      2.  Utils             Dates, escaping, ids, DOM helpers
-     3.  Storage adapters  LocalAdapter now → SupabaseAdapter later
-     4.  Store             In-memory state, validation, persistence, undo
-     5.  Account & Entitlements   Free/Premium gate (Stripe/Supabase later)
+     3.  Storage adapters  Local cache (per signed-in user, or anonymous)
+     4.  Store             In-memory state, validation, persistence, undo,
+                           plus sync bookkeeping (dirty ids + tombstones)
+     5.  Account & Entitlements   Free/Premium gate fed by server entitlements
      6.  UI primitives     Icons, modals, toasts
      7.  Selectors         Derived data (today's tasks, upcoming, stats)
      8.  Renderers         Home, preview screens, More, Premium
      9.  Flows             Task / reminder / shopping / settings forms
      10. Router & events   Hash routing, delegated clicks, init
 
-   EXTENDING LATER
-     • Supabase: implement `SupabaseAdapter` with the same { load, save,
-       onExternalChange } shape and pass it to Store.init() in boot().
-     • Stripe: make Account.getPlan() read the server-verified plan from the
-       user's profile. Entitlements.has() already guards every Premium door.
+   PART 2 ADDITIONS (accounts, cloud sync, memory, notifications)
+     The new features live in js/*.js (ES modules). They plug into this file
+     through the small bridge exposed as window.DAYMATE at the end of boot():
+     registerRoute / registerActions / onRender / onSettingsOpen + Store/UI/etc.
+     Premium is decided by the server-side `entitlements` table; the browser only
+     ever displays it (see Account.getPlan).
    ========================================================================== */
 (() => {
   'use strict';
@@ -31,10 +33,12 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.1.0',
-    stage: 1,
-    storageKey: 'daymate:v1',
-    schemaVersion: 1,
+    version: '0.2.0',
+    stage: 2,
+    storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
+    userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
+    lastUserKey: 'daymate:lastUser',   // pointer only; never trusted for cloud access
+    schemaVersion: 2,
   };
 
   const ROUTES = {
@@ -42,7 +46,9 @@
     planner:   { title: 'Planner',   sub: 'Plan your days with ease' },
     money:     { title: 'Money',     sub: 'Calm control of your finances' },
     household: { title: 'Household', sub: 'Keep your home running smoothly' },
-    more:      { title: 'More',      sub: 'Settings, Premium and what’s next' },
+    more:      { title: 'More',      sub: 'Account, settings and what’s next' },
+    notifications: { title: 'Notifications', sub: 'Reminders, alerts and history' },
+    memory:        { title: 'Memory',        sub: 'Things DAYMATE should remember' },
   };
 
   /**
@@ -53,6 +59,9 @@
     tasks:     { tier: 'free' },
     reminders: { tier: 'free' },
     shopping:  { tier: 'free' },
+    accounts:  { tier: 'free' },
+    'memory-manual':        { tier: 'free' },
+    'notifications-basic':  { tier: 'free' },
 
     'ai-assistant':       { tier: 'premium', icon: 'sparkles',       title: 'AI life assistant',            text: 'Ask, plan and organise your day in plain English.' },
     'gmail':              { tier: 'premium', icon: 'mail',           title: 'Gmail integration',            text: 'Turn emails into tasks, bills and appointments.' },
@@ -63,6 +72,9 @@
     'meal-planning':      { tier: 'premium', icon: 'utensils',       title: 'Meal planning',                text: 'Weekly meal plans that build your shopping list.' },
     'household-advanced': { tier: 'premium', icon: 'sofa',           title: 'Advanced household management', text: 'Shared homes, chore rotas and maintenance schedules.' },
     'smart-scheduling':   { tier: 'premium', icon: 'clock',          title: 'Intelligent daily scheduling', text: 'A suggested plan for your day, built around your commitments.' },
+    'morning-briefing':   { tier: 'premium', icon: 'bell',           title: 'Personalised morning briefings', text: 'A daily push summary of your tasks, appointments and bills.' },
+    'memory-advanced':    { tier: 'premium', icon: 'sparkles',       title: 'Advanced memory features',     text: 'Smarter organisation and review of everything DAYMATE remembers.' },
+    'ai-memory':          { tier: 'premium', icon: 'sparkles',       title: 'AI-powered memory retrieval',  text: 'Ask DAYMATE what it knows and get the right memory back. Not available yet.' },
     'ad-free':            { tier: 'premium', icon: 'shield',         title: 'Ad-free experience',           text: 'Enjoy DAYMATE without any adverts.' },
   };
 
@@ -124,15 +136,31 @@
   };
 
   const ROADMAP = [
-    { status: 'soon', icon: 'user',     title: 'Accounts & cloud sync', text: 'Sign in and keep your data safe across all your devices.' },
-    { status: 'soon', icon: 'bell',     title: 'Notifications',         text: 'Gentle nudges for reminders and appointments.' },
     { status: 'soon', icon: 'calendar', title: 'Calendar & email connections', text: 'Connect Google and Microsoft accounts.' },
-    { status: 'soon', icon: 'sparkles', title: 'AI assistant',          text: 'A personal assistant that helps run your day.' },
+    { status: 'soon', icon: 'sparkles', title: 'AI assistant & AI memory',     text: 'A personal assistant that remembers and helps run your day.' },
+    { status: 'soon', icon: 'card',     title: 'Premium subscriptions',        text: 'Secure payments are still to come.' },
   ];
 
   const PRIORITIES = ['low', 'medium', 'high'];
   const PRIORITY_LABEL = { low: 'Low', medium: 'Medium', high: 'High' };
   const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
+
+  /** DAYMATE Memory categories (keys match the database check constraint). */
+  const MEMORY_CATEGORIES = [
+    { key: 'personal_preferences', label: 'Personal preferences',  icon: 'user',     hint: 'How you like things done.' },
+    { key: 'daily_routines',       label: 'Daily routines',        icon: 'clock',    hint: 'Habits and regular times.' },
+    { key: 'household',            label: 'Household information', icon: 'sofa',     hint: 'Bin days, wifi, who lives where.' },
+    { key: 'important_dates',      label: 'Important dates',       icon: 'calendar', hint: 'Birthdays, renewals, anniversaries.' },
+    { key: 'goals',                label: 'Goals and ambitions',   icon: 'target',   hint: 'What you’re working towards.' },
+    { key: 'shopping_preferences', label: 'Shopping preferences',  icon: 'basket',   hint: 'Brands, sizes, favourite shops.' },
+    { key: 'meal_preferences',     label: 'Meal preferences',      icon: 'utensils', hint: 'Likes, dislikes and go-to meals.' },
+    { key: 'ongoing_projects',     label: 'Ongoing projects',      icon: 'flag',     hint: 'Things you’re in the middle of.' },
+    { key: 'conversation_info',    label: 'Useful information',    icon: 'info',     hint: 'Handy facts worth keeping.' },
+  ];
+  const MEMORY_KEYS = MEMORY_CATEGORIES.map((c) => c.key);
+  const NOTIF_TYPES = ['task', 'appointment', 'reminder', 'bill', 'missed', 'summary', 'system'];
+  const COLLECTIONS = ['tasks', 'reminders', 'shopping', 'memories', 'notifications'];
+  const REMINDER_KINDS = ['reminder', 'event', 'bill'];
 
   /* ======================================================================
      2. UTILS
@@ -165,11 +193,17 @@
 
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
-  const uid = () => (window.crypto && crypto.randomUUID)
-    ? crypto.randomUUID()
-    : `id-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const uid = () => {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    const b = new Uint8Array(16);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(b); else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+    b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+    const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  };
   const nowISO = () => new Date().toISOString();
   const cleanText = (s, max) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+  const cleanMultiline = (s, max) => String(s ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
 
   const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -180,11 +214,12 @@
                 save(state) → Promise<void>   (may throw)
                 onExternalChange(cb) (optional) → fires when another tab/device changed data
      ====================================================================== */
-  const LocalAdapter = {
+  const localAdapter = (key) => ({
     name: 'local',
+    key,
     async load() {
       try {
-        const raw = window.localStorage.getItem(APP.storageKey);
+        const raw = window.localStorage.getItem(key);
         return raw ? JSON.parse(raw) : null;
       } catch (err) {
         console.warn('[DAYMATE] Could not read saved data:', err);
@@ -192,11 +227,17 @@
       }
     },
     async save(state) {
-      window.localStorage.setItem(APP.storageKey, JSON.stringify(state));
+      window.localStorage.setItem(key, JSON.stringify(state));
     },
     onExternalChange(cb) {
-      window.addEventListener('storage', (e) => { if (e.key === APP.storageKey) cb(); });
+      window.addEventListener('storage', (e) => { if (e.key === key) cb(); });
     },
+  });
+  const userCacheKey = (userId) => `${APP.userKeyPrefix}${userId}`;
+  const safeLS = {
+    get(k) { try { return window.localStorage.getItem(k); } catch (_) { return null; } },
+    set(k, v) { try { window.localStorage.setItem(k, v); } catch (_) { /* ignore */ } },
+    del(k) { try { window.localStorage.removeItem(k); } catch (_) { /* ignore */ } },
   };
 
   /* ======================================================================
@@ -204,21 +245,46 @@
      In-memory state, validated on load, persisted through the adapter.
      Every record carries id + createdAt + updatedAt so it can sync later.
      ====================================================================== */
+  const NOTIFY_DEFAULTS = Object.freeze({
+    push: false, tasks: true, appointments: true, reminders: true, bills: true,
+    leadMinutes: [0], defaultTime: '09:00', morningSummary: false, morningTime: '08:00',
+  });
+
   const Store = (() => {
     let state = blank();
     let adapter = null;
     let saveTimer = null;
     let saveFailedNotified = false;
+    let tracking = false;               // true while signed in: record dirty ids + tombstones for sync
     const subs = new Set();
+
+    function emptySync() { return { dirty: { tasks: [], reminders: [], shopping: [], memories: [], notifications: [] }, tombstones: [], settingsDirty: false }; }
 
     function blank() {
       return {
         schemaVersion: APP.schemaVersion,
-        settings: { name: '', onboarded: false, premiumInterest: false },
+        settings: { name: '', onboarded: false, premiumInterest: false, memoryPaused: true, notify: { ...NOTIFY_DEFAULTS, leadMinutes: [0] }, updatedAt: '' },
         tasks: [],
         reminders: [],
         shopping: [],
+        memories: [],
+        notifications: [],
+        sync: emptySync(),
       };
+    }
+
+    function sanitizeNotify(n) {
+      const d = { ...NOTIFY_DEFAULTS, leadMinutes: [0] };
+      if (!n || typeof n !== 'object') return d;
+      const out = { ...d };
+      ['push', 'tasks', 'appointments', 'reminders', 'bills', 'morningSummary'].forEach((k) => { if (typeof n[k] === 'boolean') out[k] = n[k]; });
+      if (Array.isArray(n.leadMinutes)) {
+        const lead = n.leadMinutes.map(Number).filter((x) => Number.isInteger(x) && x >= 0 && x <= 10080);
+        if (lead.length) out.leadMinutes = Array.from(new Set(lead)).slice(0, 4);
+      }
+      if (isValidTime(n.defaultTime) && n.defaultTime) out.defaultTime = n.defaultTime;
+      if (isValidTime(n.morningTime) && n.morningTime) out.morningTime = n.morningTime;
+      return out;
     }
 
     function sanitize(raw) {
@@ -227,11 +293,15 @@
       const today = todayStr();
       const stamp = (v) => (typeof v === 'string' && v ? v : nowISO());
       const id = (v) => (typeof v === 'string' && v ? v : uid());
+      const optStamp = (v) => (typeof v === 'string' && v ? v : '');
 
       const set = raw.settings && typeof raw.settings === 'object' ? raw.settings : {};
       s.settings.name = cleanText(set.name, 30);
       s.settings.onboarded = set.onboarded === true;
       s.settings.premiumInterest = set.premiumInterest === true;
+      s.settings.memoryPaused = set.memoryPaused !== false;       // paused unless explicitly switched on
+      s.settings.notify = sanitizeNotify(set.notify);
+      s.settings.updatedAt = optStamp(set.updatedAt);
 
       if (Array.isArray(raw.tasks)) {
         raw.tasks.forEach((t) => {
@@ -258,11 +328,12 @@
           if (!title) return;
           s.reminders.push({
             id: id(r.id), title,
-            kind: r.kind === 'event' ? 'event' : 'reminder',
+            kind: REMINDER_KINDS.includes(r.kind) ? r.kind : 'reminder',
             date: isValidDate(r.date) ? r.date : today,
             time: isValidTime(r.time) ? r.time : '',
             note: cleanText(r.note, 200),
             done: r.done === true,
+            tbl: r.tbl === 'appointments' || r.tbl === 'reminders' ? r.tbl : '',   // which cloud table currently holds it
             createdAt: stamp(r.createdAt), updatedAt: stamp(r.updatedAt),
           });
         });
@@ -275,6 +346,51 @@
           s.shopping.push({ id: id(i.id), name, checked: i.checked === true, createdAt: stamp(i.createdAt), updatedAt: stamp(i.updatedAt) });
         });
       }
+      if (Array.isArray(raw.memories)) {
+        raw.memories.forEach((m) => {
+          if (!m || typeof m !== 'object') return;
+          const content = cleanMultiline(m.content, 1000);
+          if (!content) return;
+          s.memories.push({
+            id: id(m.id),
+            category: MEMORY_KEYS.includes(m.category) ? m.category : 'conversation_info',
+            title: cleanText(m.title, 80),
+            content,
+            source: m.source === 'ai' ? 'ai' : 'manual',
+            sensitive: m.sensitive === true,
+            createdAt: stamp(m.createdAt), updatedAt: stamp(m.updatedAt),
+          });
+        });
+      }
+      if (Array.isArray(raw.notifications)) {
+        raw.notifications.forEach((n) => {
+          if (!n || typeof n !== 'object') return;
+          const title = cleanText(n.title, 160);
+          const dedupeKey = cleanText(n.dedupeKey, 200);
+          if (!title || !dedupeKey) return;
+          s.notifications.push({
+            id: id(n.id),
+            type: NOTIF_TYPES.includes(n.type) ? n.type : 'system',
+            title, body: cleanText(n.body, 300),
+            sourceType: cleanText(n.sourceType, 20), sourceId: cleanText(n.sourceId, 64),
+            dedupeKey,
+            createdAt: stamp(n.createdAt), readAt: optStamp(n.readAt), dismissedAt: optStamp(n.dismissedAt),
+          });
+        });
+      }
+
+      const sy = raw.sync && typeof raw.sync === 'object' ? raw.sync : {};
+      COLLECTIONS.forEach((c) => {
+        const list = sy.dirty && Array.isArray(sy.dirty[c]) ? sy.dirty[c] : [];
+        s.sync.dirty[c] = Array.from(new Set(list.filter((x) => typeof x === 'string' && x)));
+      });
+      if (Array.isArray(sy.tombstones)) {
+        sy.tombstones.forEach((t) => {
+          if (!t || !COLLECTIONS.includes(t.col) || typeof t.id !== 'string' || !t.id) return;
+          s.sync.tombstones.push({ col: t.col, id: t.id, tbl: t.tbl === 'appointments' || t.tbl === 'reminders' ? t.tbl : '', deletedAt: stamp(t.deletedAt) });
+        });
+      }
+      s.sync.settingsDirty = sy.settingsDirty === true;
       return s;
     }
 
@@ -296,25 +412,48 @@
         }
       }
     }
-    function commit() { queueSave(); emit('local'); }
+    function commit(source = 'local') { queueSave(); emit(source); }
+
+    /* ---- sync bookkeeping (only while signed in) ---- */
+    function markDirty(col, id) {
+      if (!tracking) return;
+      const list = state.sync.dirty[col];
+      if (!list.includes(id)) list.push(id);
+      state.sync.tombstones = state.sync.tombstones.filter((t) => !(t.col === col && t.id === id));
+    }
+    function addTombstone(col, item) {
+      if (!tracking) return;
+      state.sync.dirty[col] = state.sync.dirty[col].filter((x) => x !== item.id);
+      state.sync.tombstones = state.sync.tombstones.filter((t) => !(t.col === col && t.id === item.id));
+      state.sync.tombstones.push({ col, id: item.id, tbl: item.tbl || '', deletedAt: nowISO() });
+    }
+    const hasTombstone = (col, id) => state.sync.tombstones.some((t) => t.col === col && t.id === id);
 
     return {
-      async init(a) {
+      async init(a) { await this.useAdapter(a); },
+      /** Load state from a different adapter (e.g. switching to a signed-in user's cache). */
+      async useAdapter(a) {
+        await flush();
         adapter = a;
-        state = sanitize(await adapter.load());
-        if (adapter.onExternalChange) {
-          adapter.onExternalChange(async () => { state = sanitize(await adapter.load()); emit('external'); });
+        state = sanitize(await a.load());
+        if (a.onExternalChange) {
+          a.onExternalChange(async () => { if (a !== adapter) return; state = sanitize(await a.load()); emit('external'); });
         }
+        emit('adapter');
       },
+      get adapterKey() { return adapter ? adapter.key : ''; },
       get state() { return state; },
       subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
       flush,
+      setTracking(on) { tracking = !!on; },
+      get tracking() { return tracking; },
 
       get(col, id) { return state[col].find((x) => x.id === id) || null; },
       add(col, fields) {
         const stamp = nowISO();
         const item = { id: uid(), ...fields, createdAt: stamp, updatedAt: stamp };
         state[col].push(item);
+        markDirty(col, item.id);
         commit();
         return item;
       },
@@ -322,6 +461,7 @@
         const item = this.get(col, id);
         if (!item) return null;
         Object.assign(item, patch, { updatedAt: nowISO() });
+        markDirty(col, id);
         commit();
         return item;
       },
@@ -329,29 +469,111 @@
         const index = state[col].findIndex((x) => x.id === id);
         if (index < 0) return null;
         const [item] = state[col].splice(index, 1);
+        addTombstone(col, item);
         commit();
         return { item, index };
       },
       restore(col, item, index) {
+        item.updatedAt = nowISO();          // newer than the delete, so it wins when synced
         state[col].splice(Math.min(index, state[col].length), 0, item);
+        markDirty(col, item.id);
         commit();
       },
-      replace(col, items) { state[col] = items; commit(); },
-      setSettings(patch) { Object.assign(state.settings, patch); commit(); },
-      reset() { state = blank(); commit(); },
+      /** Bring in items from elsewhere (device data → account), keeping ids and timestamps. */
+      importItems(col, items) {
+        items.forEach((it) => { state[col].push(it); markDirty(col, it.id); });
+        if (items.length) commit();
+      },
+      replace(col, items) {
+        const keep = new Set(items.map((x) => x.id));
+        state[col].forEach((old) => { if (!keep.has(old.id)) addTombstone(col, old); });
+        items.forEach((it) => {
+          if (hasTombstone(col, it.id)) { it.updatedAt = nowISO(); markDirty(col, it.id); }   // undo of a delete
+        });
+        state[col] = items;
+        commit();
+      },
+      setSettings(patch) {
+        Object.assign(state.settings, patch);
+        if (tracking) { state.settings.updatedAt = nowISO(); state.sync.settingsDirty = true; }
+        commit();
+      },
+      reset() {
+        const old = state;
+        state = blank();
+        if (tracking) {
+          COLLECTIONS.forEach((c) => old[c].forEach((item) => {
+            state.sync.tombstones.push({ col: c, id: item.id, tbl: item.tbl || '', deletedAt: nowISO() });
+          }));
+          state.sync.settingsDirty = true;
+          state.settings.updatedAt = nowISO();
+        }
+        commit();
+      },
+
+      /* ---- used by the sync / migration modules ---- */
+      /** Apply records that arrived from the cloud. Does NOT mark anything dirty. */
+      applyRemote(ops) {
+        ops.forEach((op) => {
+          const list = state[op.col];
+          const i = list.findIndex((x) => x.id === op.id);
+          if (op.remove) { if (i >= 0) list.splice(i, 1); }
+          else if (i >= 0) list[i] = op.item;
+          else list.push(op.item);
+        });
+        if (ops.length) commit('remote');
+      },
+      applySettingsRemote(patch) { Object.assign(state.settings, patch); commit('remote'); },
+      /** After a successful push: forget those ids / tombstones. */
+      clearSynced({ dirty = {}, tombstones = [], settings = false }) {
+        Object.keys(dirty).forEach((c) => { const done = new Set(dirty[c]); state.sync.dirty[c] = state.sync.dirty[c].filter((x) => !done.has(x)); });
+        if (tombstones.length) { const done = new Set(tombstones.map((t) => `${t.col}:${t.id}`)); state.sync.tombstones = state.sync.tombstones.filter((t) => !done.has(`${t.col}:${t.id}`)); }
+        if (settings) state.sync.settingsDirty = false;
+        queueSave();
+      },
+      /** Set a record's bookkeeping field (e.g. tbl) without bumping updatedAt. */
+      patchQuiet(col, id, patch) { const it = this.get(col, id); if (it) { Object.assign(it, patch); queueSave(); } },
+      markAllDirty() {
+        COLLECTIONS.forEach((c) => { state.sync.dirty[c] = state[c].map((x) => x.id); });
+        state.sync.tombstones = [];
+        state.sync.settingsDirty = true;
+        queueSave();
+      },
+      /** A deep copy of user data without internal sync bookkeeping (for backups / migration). */
+      snapshot() {
+        const copy = JSON.parse(JSON.stringify(state));
+        delete copy.sync;
+        return copy;
+      },
+      sanitizeExternal: sanitize,
     };
   })();
 
   /* ======================================================================
      5. ACCOUNT & ENTITLEMENTS
-     Stage 1: everyone is on the Free plan. The plan is NEVER read from
-     localStorage, so it cannot be switched on by editing local data.
-     LATER: Account.getPlan() reads the plan from the signed-in user's
-     Supabase profile, kept in sync by Stripe webhooks. Real enforcement of
-     Premium data/APIs must also happen server-side (RLS / edge functions).
+     The plan is NEVER read from localStorage, so it can't be switched on by
+     editing local data. It is fetched from the server's `entitlements` table
+     (read-only for the signed-in user) and held in memory only. Everything
+     here is for DISPLAY: the database and Edge Functions enforce Premium
+     rules themselves (see supabase/migrations). Stripe will later write that
+     table from a webhook; nothing in the browser can.
      ====================================================================== */
   const Account = {
-    getPlan() { return 'free'; },
+    user: null,                  // { id, email } when signed in
+    entitlement: null,           // { plan, status, currentPeriodEnd } from the server
+    configured: false,           // Supabase settings present in config.js
+    syncState: 'local',          // local | syncing | synced | offline | error
+    syncDetail: '',
+    getPlan() {
+      const e = this.entitlement;
+      if (!this.user || !e) return 'free';
+      const live = e.plan === 'premium' && ['active', 'trialing'].includes(e.status)
+        && (!e.currentPeriodEnd || new Date(e.currentPeriodEnd) > new Date());
+      return live ? 'premium' : 'free';
+    },
+    planLabel() { return this.getPlan() === 'premium' ? 'Premium' : 'Free plan'; },
+    /** Modules call this when account/sync info changes; it refreshes the UI. */
+    set(patch) { Object.assign(this, patch); if (typeof renderAll === 'function' && ui.ready) renderAll(); },
   };
 
   const Entitlements = {
@@ -492,7 +714,13 @@
     barsShown: false,
     sig: '',
     welcomed: false,
+    ready: false,
   };
+
+  /** Extension points used by js/*.js modules (see window.DAYMATE at the end of boot). */
+  const extraRoutes = {};
+  const hooks = { render: [], settingsOpen: [] };
+  const runHooks = (list) => list.forEach((fn) => { try { fn(); } catch (err) { console.warn('[DAYMATE] hook failed:', err); } });
 
   function compareTasks(a, b, today) {
     if (a.completed !== b.completed) return a.completed ? 1 : -1;
@@ -542,6 +770,8 @@
 
   const shoppingLeft = () => Store.state.shopping.filter((i) => !i.checked).length;
   const remindersToday = () => { const t = todayStr(); return Store.state.reminders.filter((r) => !r.done && r.date === t).length; };
+  const kindLabel = (k) => (k === 'event' ? 'Appointment' : k === 'bill' ? 'Bill' : 'Reminder');
+  const kindIcon = (k) => (k === 'event' ? 'calendar' : k === 'bill' ? 'receipt' : 'bell');
   const timeSignature = () => {
     const today = todayStr(), hm = nowHM();
     return `${today}|${Store.state.reminders.filter((r) => isReminderOverdue(r, today, hm)).map((r) => r.id).join(',')}`;
@@ -563,6 +793,10 @@
     const initial = $('#avatarInitial');
     initial.textContent = name ? name.charAt(0).toUpperCase() : '';
     $('#avatarIcon').style.display = name ? 'none' : '';
+    const navPlan = $('#navPlan');
+    if (navPlan) navPlan.textContent = Account.planLabel();
+    const navPlanSub = $('#navPlanSub');
+    if (navPlanSub) navPlanSub.textContent = Account.getPlan() === 'premium' ? 'Thank you for supporting DAYMATE' : 'Premium coming soon';
   }
 
   /* ---- Home: overview ---- */
@@ -657,8 +891,8 @@
   function upcomingRow(it, today) {
     const isNew = !ui.seen.has(`u-${it.id}`);
     const chipCls = it.type === 'event' ? ' up__chip--event' : it.type === 'task' ? ' up__chip--task' : '';
-    const chipIcon = it.type === 'event' ? 'calendar' : it.type === 'task' ? 'list' : 'bell';
-    const typeLabel = it.type === 'event' ? 'Appointment' : it.type === 'task' ? 'Task' : 'Reminder';
+    const chipIcon = it.type === 'task' ? 'list' : kindIcon(it.type);
+    const typeLabel = it.type === 'task' ? 'Task' : kindLabel(it.type);
     const when = [it.overdue ? `<span class="meta--overdue">Overdue</span>` : '', esc(`${typeLabel}${it.time ? ` · ${it.time}` : ''}${it.overdue ? ` · ${dayLabel(it.date, today)}` : ''}`)].join('');
     const editAction = it.type === 'task' ? 'edit-task' : 'edit-reminder';
     const delAction = it.type === 'task' ? 'delete-task' : 'delete-reminder';
@@ -708,7 +942,7 @@
       if (ui.showDone) {
         html += `<ul class="uplist">${doneReminders.slice(0, 8).map((r) => `
           <li class="up is-done" data-id="${esc(r.id)}">
-            <span class="up__chip${r.kind === 'event' ? ' up__chip--event' : ''}">${icon(r.kind === 'event' ? 'calendar' : 'bell')}</span>
+            <span class="up__chip${r.kind === 'event' ? ' up__chip--event' : ''}">${icon(kindIcon(r.kind))}</span>
             <button type="button" class="up__body" data-action="edit-reminder" aria-label="Edit: ${esc(r.title)}">
               <span class="up__title">${esc(r.title)}</span>
               <span class="up__meta">${esc(dayLabel(r.date, today))}${r.time ? ` · ${esc(r.time)}` : ''}</span>
@@ -858,22 +1092,57 @@
   }
 
   /* ---- More ---- */
+  function syncLine() {
+    if (!Account.configured) return 'Stored on this device only. Cloud accounts need setting up first.';
+    if (!Account.user) return 'Stored on this device only. Sign in to back up and sync.';
+    const map = { syncing: 'Syncing…', synced: 'Synced to your account', offline: 'Offline — will sync when you’re back online', error: 'Sync problem — will retry', local: 'Signed in' };
+    return map[Account.syncState] || 'Signed in';
+  }
+
   function renderMore() {
     const host = $('#view-more');
     const name = Store.state.settings.name;
+    const email = Account.user ? Account.user.email : '';
+    const unread = Store.state.notifications.filter((n) => !n.readAt && !n.dismissedAt).length;
     host.innerHTML = `
       <div class="preview-wrap">
         <button type="button" class="card account" data-action="open-settings">
           <span class="account__avatar">${name ? esc(name.charAt(0).toUpperCase()) : icon('user')}</span>
-          <span class="account__text"><strong>${name ? esc(name) : 'Set up your profile'}</strong><small>${name ? 'Profile & settings' : 'Add your name for a personal greeting'}</small></span>
-          <span class="plan-tag">Free plan</span>
+          <span class="account__text"><strong>${name ? esc(name) : 'Set up your profile'}</strong><small>${email ? esc(email) : (name ? 'Profile & settings' : 'Add your name for a personal greeting')}</small></span>
+          <span class="plan-tag">${esc(Account.planLabel())}</span>
         </button>
+        <p class="sync-line" role="status"><i class="sync-dot sync-dot--${esc(Account.user ? Account.syncState : 'local')}"></i>${esc(syncLine())}</p>
+
+        ${Account.user ? '' : `<button type="button" class="row row--solo" data-action="open-auth" data-mode="signin">
+          <span class="row__icon">${icon('lock')}</span>
+          <span class="row__text"><strong>Sign in or create an account</strong><small>Keep your data safe and use DAYMATE on every device</small></span>
+          ${icon('chevron', 'row__chev')}
+        </button>`}
 
         <button type="button" class="promo" data-action="open-premium">
           <span class="promo__icon">${icon('sparkles')}</span>
-          <span class="promo__text"><strong>DAYMATE Premium</strong><small>Coming soon · See what’s planned</small></span>
+          <span class="promo__text"><strong>DAYMATE Premium</strong><small>${Account.getPlan() === 'premium' ? 'You have Premium' : 'Coming soon · See what’s planned'}</small></span>
           ${icon('chevron', 'promo__chev')}
         </button>
+
+        <h3 class="group-title">Your DAYMATE</h3>
+        <div class="rows">
+          <a class="row" href="#/notifications">
+            <span class="row__icon">${icon('bell')}</span>
+            <span class="row__text"><strong>Notification centre</strong><small>${unread ? `${plural(unread, 'unread alert', 'unread alerts')}` : 'Reminders, alerts and history'}</small></span>
+            ${icon('chevron', 'row__chev')}
+          </a>
+          <a class="row" href="#/memory">
+            <span class="row__icon">${icon('sparkles')}</span>
+            <span class="row__text"><strong>Memory</strong><small>${plural(Store.state.memories.length, 'thing', 'things')} remembered</small></span>
+            ${icon('chevron', 'row__chev')}
+          </a>
+          <button type="button" class="row" data-action="open-notify-prefs">
+            <span class="row__icon">${icon('sliders')}</span>
+            <span class="row__text"><strong>Notification settings</strong><small>Phone alerts, reminder times, morning summary</small></span>
+            ${icon('chevron', 'row__chev')}
+          </button>
+        </div>
 
         <h3 class="group-title">App</h3>
         <div class="rows">
@@ -884,7 +1153,7 @@
           </button>`}
           <button type="button" class="row" data-action="open-settings">
             <span class="row__icon">${icon('sliders')}</span>
-            <span class="row__text"><strong>Settings</strong><small>Your name, backup and data</small></span>
+            <span class="row__text"><strong>Account & settings</strong><small>Your name, account, backup and data</small></span>
             ${icon('chevron', 'row__chev')}
           </button>
           <button type="button" class="row" data-action="export-data">
@@ -896,7 +1165,7 @@
         <h3 class="group-title">What’s coming next</h3>
         <ul class="features">${ROADMAP.map(featureRow).join('')}</ul>
 
-        <p class="about"><strong>DAYMATE</strong><br>${esc(APP.tagline)}<br>Version ${esc(APP.version)} · Stage ${APP.stage}<br>Your data is stored on this device only.</p>
+        <p class="about"><strong>DAYMATE</strong><br>${esc(APP.tagline)}<br>Version ${esc(APP.version)} · Part ${APP.stage}<br>${esc(Account.user ? 'Your data is saved to your account and cached on this device.' : 'Your data is stored on this device only.')}</p>
       </div>`;
   }
 
@@ -926,6 +1195,8 @@
         <div class="mock__meter"><i></i></div>
         <p class="mock__small">68% of this month’s bills paid</p>
       </div>`;
+    const pill = $('.plan-pill');
+    if (pill) pill.innerHTML = `<span class="plan-pill__dot"></span>${Account.getPlan() === 'premium' ? 'You have Premium' : 'You’re on the Free plan'}`;
     updateNotifyButton();
   }
 
@@ -955,6 +1226,7 @@
   function renderRoute() {
     if (ui.route === 'home') renderHome();
     else if (ui.route === 'more') renderMore();
+    else if (extraRoutes[ui.route]) extraRoutes[ui.route].render($(`#view-${ui.route}`));
     else renderPreview(ui.route);
   }
 
@@ -964,6 +1236,7 @@
     if (ui.route !== 'home') { renderOverview(); }     // keeps the shopping badge etc. correct
     if (Modal.isOpen('m-shopping')) renderShopping();
     if (Modal.isOpen('m-premium')) updateNotifyButton();
+    runHooks(hooks.render);
   }
 
   /* ======================================================================
@@ -1053,7 +1326,7 @@
     const form = $('#reminderForm');
     clearErrors(form);
     form.dataset.id = r ? r.id : '';
-    $('#reminderSheetTitle').textContent = r ? (r.kind === 'event' ? 'Edit appointment' : 'Edit reminder') : 'New reminder';
+    $('#reminderSheetTitle').textContent = r ? `Edit ${kindLabel(r.kind).toLowerCase()}` : 'New reminder';
     $('#reminderSave').textContent = r ? 'Save changes' : 'Add reminder';
     $('#reminderTitle').value = r ? r.title : '';
     setRadio(form, 'kind', r ? r.kind : 'reminder');
@@ -1077,7 +1350,8 @@
     if (!isValidDate(date)) { showError('reminderDate', 'reminderDateError', 'Pick a valid date.'); ok = false; }
     else if (!isValidTime(time)) { showError('reminderTime', 'reminderDateError', 'Enter a valid time, or leave it blank.'); ok = false; }
     if (!ok) { const bad = $('.is-invalid', form); if (bad) bad.focus(); return; }
-    const kind = getRadio(form, 'kind') === 'event' ? 'event' : 'reminder';
+    const kindRaw = getRadio(form, 'kind');
+    const kind = REMINDER_KINDS.includes(kindRaw) ? kindRaw : 'reminder';
     if (form.dataset.id) Store.update('reminders', form.dataset.id, { title, kind, date, time, note, done: false });
     else Store.add('reminders', { title, kind, date, time, note, done: false });
     Modal.close('m-reminder');
@@ -1091,7 +1365,7 @@
   function deleteReminder(id) {
     const r = Store.remove('reminders', id);
     if (!r) return;
-    UI.toast(`${r.item.kind === 'event' ? 'Appointment' : 'Reminder'} deleted`, { action: { label: 'Undo', fn: () => Store.restore('reminders', r.item, r.index) } });
+    UI.toast(`${kindLabel(r.item.kind)} deleted`, { action: { label: 'Undo', fn: () => Store.restore('reminders', r.item, r.index) } });
   }
 
   /* ---- Shopping ---- */
@@ -1140,13 +1414,14 @@
   /* ---- Settings, data, onboarding ---- */
   function openSettings() {
     $('#settingsName').value = Store.state.settings.name;
-    $('#settingsAbout').textContent = `${APP.name} ${APP.version} · Stage ${APP.stage}. All data lives on this device until accounts and cloud sync arrive.`;
+    $('#settingsAbout').textContent = `${APP.name} ${APP.version} · Part ${APP.stage}. ${Account.user ? 'Your data is saved to your account and cached on this device.' : 'Signed out: your data lives on this device only.'}`;
+    runHooks(hooks.settingsOpen);
     Modal.open('m-settings');
   }
 
   function exportData() {
     try {
-      const payload = { app: APP.name, version: APP.version, exportedAt: nowISO(), data: Store.state };
+      const payload = { app: APP.name, version: APP.version, exportedAt: nowISO(), data: Store.snapshot() };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -1166,7 +1441,9 @@
   async function resetData() {
     const yes = await confirmDialog({
       title: 'Erase all data?',
-      message: 'This permanently removes every task, reminder and shopping item stored on this device. It can’t be undone.',
+      message: Account.user
+        ? 'This permanently removes every task, reminder, shopping item, memory and notification from this device AND from your DAYMATE account. It can’t be undone.'
+        : 'This permanently removes every task, reminder, shopping item and memory stored on this device. It can’t be undone.',
       okLabel: 'Erase everything',
     });
     if (!yes) return;
@@ -1277,7 +1554,7 @@
       const on = !Store.state.settings.premiumInterest;
       Store.setSettings({ premiumInterest: on });
       updateNotifyButton();
-      if (on) UI.toast('You’re on the list. Saved on this device for now.');
+      if (on) UI.toast(Account.user ? 'You’re on the list.' : 'You’re on the list. Saved on this device for now.');
     },
 
     'open-settings':   () => openSettings(),
@@ -1415,15 +1692,41 @@
   }
 
   async function boot() {
-    await Store.init(LocalAdapter);
+    // If someone was signed in on this device, start from THEIR cache so the first
+    // paint is already correct. This pointer grants no cloud access; the real
+    // session is checked by js/auth.js, which switches back to anonymous data if
+    // there is no valid session.
+    let hintId = '';
+    try { const h = JSON.parse(safeLS.get(APP.lastUserKey) || 'null'); hintId = h && typeof h.id === 'string' ? h.id : ''; } catch (_) { /* ignore */ }
+    await Store.init(localAdapter(hintId ? userCacheKey(hintId) : APP.storageKey));
     Store.subscribe(() => { renderAll(); });
     bindEvents();
     bindSheetDrag();
     applyRoute();
+    ui.ready = true;
     ui.sig = timeSignature();
     setInterval(tickCheck, 30000);
     registerServiceWorker();
     setTimeout(maybeWelcome, 450);
+    exposeBridge();
+  }
+
+  /** The small, deliberate surface that js/*.js modules build on. */
+  function exposeBridge() {
+    window.DAYMATE = Object.freeze({
+      APP, Store, Account, Entitlements, UI, Modal, confirmDialog,
+      MEMORY_CATEGORIES, NOTIF_TYPES, NOTIFY_DEFAULTS, FEATURES, COLLECTIONS, REMINDER_KINDS,
+      helpers: { $, $$, esc, icon, plural, cleanText, cleanMultiline, uid, nowISO, pad, todayStr, nowHM, addDays, parseDate, toDateStr,
+                 dayLabel, longDate, isValidDate, isValidTime, isStandalone, isIOS, emptyState, kindLabel, kindIcon, safeLS },
+      storage: { localAdapter, userCacheKey, safeLS },
+      views: { upcomingItems, isReminderOverdue, openPremium, openTaskSheet, openReminderSheet, renderAll },
+      registerRoute(name, cfg) { extraRoutes[name] = cfg; if (ui.route === name) renderAll(); },
+      registerActions(map) { Object.assign(actions, map); },
+      onRender(fn) { hooks.render.push(fn); },
+      onSettingsOpen(fn) { hooks.settingsOpen.push(fn); },
+      get route() { return ui.route; },
+    });
+    window.dispatchEvent(new CustomEvent('daymate:ready'));
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

@@ -1,0 +1,13 @@
+# Supabase CLI config (only the parts DAYMATE needs).
+# The scheduler calls this function with a shared secret header instead of a
+# user JWT, so JWT verification is switched off for it. The function itself
+# rejects any request without the correct x-cron-secret.
+[functions.send-due-notifications]
+verify_jwt = false
+
+# These two are called from the browser with the signed-in user's JWT.
+[functions.send-test-notification]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
