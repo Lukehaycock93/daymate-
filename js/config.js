@@ -15,7 +15,7 @@
    Left blank, DAYMATE runs exactly as in Part 1: local-only, no accounts.
    ========================================================================== */
 export const CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: '',
-  vapidPublicKey: '',
+  supabaseUrl: 'https://mmumhmkmzsmjjesclbqi.supabase.co',
+  supabaseAnonKey: 'sb_publishable_6V4Wll6Gtjyz9Gr8YyTDew_scha2b2f',
+  vapidPublicKey: 'BEyPkf0Kk_xM13B89SP9JtkLpLBoUN-7SWfVzt3WYl567IDT0Fbs5QKMD2hPTDpw9dawyRTHN7QaIuWRBwu04B4',
 };
