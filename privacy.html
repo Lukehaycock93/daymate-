@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a1230">
+  <meta name="color-scheme" content="dark">
+  <title>DAYMATE — Privacy policy</title>
+  <link rel="icon" href="icons/favicon-32.png">
+  <style>
+    :root { --bg:#0a1230; --card:#111d42; --text:#eaf0ff; --muted:#a9b6d9; --blue:#4d9bff; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:24px 16px 64px; }
+    main { max-width: 680px; margin: 0 auto; }
+    a { color: var(--blue); }
+    h1 { font-size: 28px; margin: 8px 0 4px; }
+    h2 { font-size: 19px; margin: 32px 0 8px; }
+    p, li { color: var(--muted); }
+    li { margin: 4px 0; }
+    .updated { font-size: 14px; }
+    .box { background: var(--card); border-radius: 16px; padding: 16px 18px; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+    td, th { text-align: left; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,.1); vertical-align: top; color: var(--muted); }
+    th { color: var(--text); }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="./">← Back to DAYMATE</a></p>
+  <h1>Privacy policy</h1>
+  <p class="updated">Last updated: 23 November 2026</p>
+
+  <div class="box"><p style="margin:0">DAYMATE is a personal organiser. Your tasks, reminders and memories are yours. We don’t sell your data, and there are no adverts in DAYMATE today.</p></div>
+
+  <h2>Who is responsible</h2>
+  <p>DAYMATE is an independent app run from the UK. <span id="contact">Questions about your data can be sent through the app’s support contact.</span></p>
+
+  <h2>What we store</h2>
+  <ul>
+    <li><strong>On your device:</strong> your tasks, reminders, shopping list and memories are kept in your browser’s storage so DAYMATE works offline.</li>
+    <li><strong>If you create an account:</strong> your email address, your name (if you give one), and a copy of your tasks, appointments, reminders, shopping list, memories, notification history and preferences, so they sync between your devices.</li>
+    <li><strong>If you turn on phone notifications:</strong> a push address for your device (provided by Apple, Google or your browser), so reminders can reach you.</li>
+  </ul>
+
+  <h2>Where it is stored</h2>
+  <p>Account data is held with Supabase, in a database in London (UK). Each person can only access their own rows. Passwords are handled by Supabase and are never visible to us.</p>
+
+  <h2>Analytics (only if you say yes)</h2>
+  <p>If you tap “Allow analytics”, DAYMATE uses Google Analytics 4 to count which screens are opened, along with general device and browser details and approximate location that Google collects. We send only the screen name. We never send task titles, memory text, your name, email or account id. If you choose “No thanks”, or ignore the question, nothing is loaded from Google. You can change your mind at any time in Settings → Privacy, which also removes Google’s cookies from this site.</p>
+
+  <h2>What is saved in your browser</h2>
+  <table>
+    <tr><th>Item</th><th>Why</th></tr>
+    <tr><td>DAYMATE data (local storage)</td><td>Your tasks, reminders, memories and settings, so the app works offline.</td></tr>
+    <tr><td>Sign-in session</td><td>Keeps you signed in on this device.</td></tr>
+    <tr><td>Your privacy choice</td><td>Remembers whether you allowed analytics.</td></tr>
+    <tr><td>Google Analytics cookies (<code>_ga</code>…)</td><td>Only if you allow analytics.</td></tr>
+  </table>
+
+  <h2>How long we keep it</h2>
+  <p>Items you delete are removed from your devices straight away and permanently erased from our database within 30 days. If you delete your account, everything linked to it is removed.</p>
+
+  <h2>Your rights</h2>
+  <p>Under UK data protection law you can ask to see, correct, export or erase your data, and withdraw consent at any time. Most of this you can do yourself in the app: <strong>Settings → Download a backup</strong> exports your data, <strong>Settings → Delete my account</strong> erases it, and <strong>Settings → Privacy</strong> controls analytics. You can also complain to the Information Commissioner’s Office (ico.org.uk).</p>
+
+  <h2>Children</h2>
+  <p>DAYMATE is not designed for children under 13.</p>
+
+  <h2>Changes</h2>
+  <p>DAYMATE will gain AI features, paid plans and possibly advertising. Before any of these handle your data, this policy will be updated and you will be asked for any consent that is needed.</p>
+</main>
+<script type="module">
+  import { CONFIG } from './js/config.js';
+  const e = (CONFIG.contactEmail || '').trim();
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) {
+    const s = document.getElementById('contact');
+    s.textContent = 'Contact: ';
+    const a = document.createElement('a'); a.href = `mailto:${e}`; a.textContent = e; s.appendChild(a); s.append('.');
+  }
+</script>
+</body>
+</html>
