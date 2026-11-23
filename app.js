@@ -33,7 +33,7 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.2.0',
+    version: '0.3.0',
     stage: 2,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
@@ -141,9 +141,18 @@
     { status: 'soon', icon: 'card',     title: 'Premium subscriptions',        text: 'Secure payments are still to come.' },
   ];
 
-  const PRIORITIES = ['low', 'medium', 'high'];
-  const PRIORITY_LABEL = { low: 'Low', medium: 'Medium', high: 'High' };
-  const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
+  const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
+  const PRIORITY_LABEL = { low: 'Low', medium: 'Normal', high: 'High', urgent: 'Urgent' };
+  const PRIORITY_RANK = { urgent: 0, high: 1, medium: 2, low: 3 };
+  const CATEGORIES = [
+    { key: 'personal', label: 'Personal', icon: 'user' },
+    { key: 'family',   label: 'Family',   icon: 'sofa' },
+    { key: 'work',     label: 'Work',     icon: 'flag' },
+    { key: 'shopping', label: 'Shopping', icon: 'basket' },
+    { key: 'bills',    label: 'Bills',    icon: 'receipt' },
+  ];
+  const CATEGORY_KEYS = CATEGORIES.map((c) => c.key);
+  const REPEATS = ['', 'daily', 'weekly', 'monthly', 'yearly'];
 
   /** DAYMATE Memory categories (keys match the database check constraint). */
   const MEMORY_CATEGORIES = [
@@ -312,6 +321,8 @@
           s.tasks.push({
             id: id(t.id), title,
             priority: PRIORITIES.includes(t.priority) ? t.priority : 'medium',
+            category: CATEGORY_KEYS.includes(t.category) ? t.category : 'personal',
+            repeat: REPEATS.includes(t.repeat) ? t.repeat : '',
             date: isValidDate(t.date) ? t.date : today,
             time: isValidTime(t.time) ? t.time : '',
             completed,
@@ -332,6 +343,9 @@
             date: isValidDate(r.date) ? r.date : today,
             time: isValidTime(r.time) ? r.time : '',
             note: cleanText(r.note, 200),
+            category: CATEGORY_KEYS.includes(r.category) ? r.category : (r.kind === 'bill' ? 'bills' : 'personal'),
+            repeat: REPEATS.includes(r.repeat) ? r.repeat : '',
+            important: r.important === true,
             done: r.done === true,
             tbl: r.tbl === 'appointments' || r.tbl === 'reminders' ? r.tbl : '',   // which cloud table currently holds it
             createdAt: stamp(r.createdAt), updatedAt: stamp(r.updatedAt),
@@ -719,7 +733,8 @@
 
   /** Extension points used by js/*.js modules (see window.DAYMATE at the end of boot). */
   const extraRoutes = {};
-  const hooks = { render: [], settingsOpen: [] };
+  const hooks = { render: [], settingsOpen: [], complete: [] };
+  const fireComplete = (col, item) => hooks.complete.forEach((fn) => { try { fn(col, item); } catch (err) { console.warn('[DAYMATE] hook failed:', err); } });
   const runHooks = (list) => list.forEach((fn) => { try { fn(); } catch (err) { console.warn('[DAYMATE] hook failed:', err); } });
 
   function compareTasks(a, b, today) {
@@ -959,7 +974,7 @@
   /* ---- Home: daily summary ---- */
   function renderSummary() {
     const { today, list, done, remaining } = dayData();
-    const hi = remaining.filter((t) => t.priority === 'high').length;
+    const hi = remaining.filter((t) => t.priority === 'high' || t.priority === 'urgent').length;
     const overdue = remaining.filter((t) => t.date < today).length;
 
     const days = [];
@@ -1257,7 +1272,10 @@
     $('#taskSave').textContent = t ? 'Save changes' : 'Add task';
     $('#taskTitle').value = t ? t.title : '';
     setRadio(form, 'priority', t ? t.priority : 'medium');
-    $('#taskDate').value = t ? t.date : todayStr();
+    $('#taskCategory').value = t ? t.category : 'personal';
+    $('#taskRepeat').value = t ? t.repeat : '';
+    $('#taskDate').value = t ? t.date : (ui.presetDate || todayStr());
+    ui.presetDate = '';
     $('#taskTime').value = t ? t.time : '';
     $('#taskDelete').hidden = !t;
     Modal.open('m-task', { focus: t ? null : '#taskTitle' });
@@ -1276,8 +1294,10 @@
     else if (!isValidTime(time)) { showError('taskTime', 'taskDateError', 'Enter a valid time, or leave it blank.'); ok = false; }
     if (!ok) { const bad = $('.is-invalid', form); if (bad) bad.focus(); return; }
     const priority = PRIORITIES.includes(getRadio(form, 'priority')) ? getRadio(form, 'priority') : 'medium';
-    if (form.dataset.id) Store.update('tasks', form.dataset.id, { title, priority, date, time });
-    else Store.add('tasks', { title, priority, date, time, completed: false, completedOn: '', completedAt: '' });
+    const category = CATEGORY_KEYS.includes($('#taskCategory').value) ? $('#taskCategory').value : 'personal';
+    const repeat = REPEATS.includes($('#taskRepeat').value) ? $('#taskRepeat').value : '';
+    if (form.dataset.id) Store.update('tasks', form.dataset.id, { title, priority, category, repeat, date, time });
+    else Store.add('tasks', { title, priority, category, repeat, date, time, completed: false, completedOn: '', completedAt: '' });
     Modal.close('m-task');
   }
 
@@ -1287,6 +1307,7 @@
     const completed = !t.completed;
     ui.hold = true;
     Store.update('tasks', id, { completed, completedOn: completed ? todayStr() : '', completedAt: completed ? nowISO() : '' });
+    if (completed) fireComplete('tasks', Store.get('tasks', id));
     const row = $$('#taskList > li').find((li) => li.dataset.id === id);
     if (row) {
       row.classList.toggle('is-done', completed);
@@ -1314,7 +1335,7 @@
       return;
     }
     input.classList.remove('is-invalid');
-    Store.add('tasks', { title, priority: 'medium', date: todayStr(), time: '', completed: false, completedOn: '', completedAt: '' });
+    Store.add('tasks', { title, priority: 'medium', category: 'personal', repeat: '', date: todayStr(), time: '', completed: false, completedOn: '', completedAt: '' });
     input.value = '';
     if (ui.filter === 'done') { ui.filter = 'all'; renderTasks(); }
     input.focus();
@@ -1330,9 +1351,13 @@
     $('#reminderSave').textContent = r ? 'Save changes' : 'Add reminder';
     $('#reminderTitle').value = r ? r.title : '';
     setRadio(form, 'kind', r ? r.kind : 'reminder');
-    $('#reminderDate').value = r ? r.date : todayStr();
+    $('#reminderDate').value = r ? r.date : (ui.presetDate || todayStr());
+    ui.presetDate = '';
     $('#reminderTime').value = r ? r.time : '';
     $('#reminderNote').value = r ? r.note : '';
+    $('#reminderCategory').value = r ? r.category : 'personal';
+    $('#reminderRepeat').value = r ? r.repeat : '';
+    $('#reminderImportant').checked = !!(r && r.important);
     $('#reminderDelete').hidden = !r;
     Modal.open('m-reminder', { focus: r ? null : '#reminderTitle' });
   }
@@ -1352,14 +1377,17 @@
     if (!ok) { const bad = $('.is-invalid', form); if (bad) bad.focus(); return; }
     const kindRaw = getRadio(form, 'kind');
     const kind = REMINDER_KINDS.includes(kindRaw) ? kindRaw : 'reminder';
-    if (form.dataset.id) Store.update('reminders', form.dataset.id, { title, kind, date, time, note, done: false });
-    else Store.add('reminders', { title, kind, date, time, note, done: false });
+    const category = CATEGORY_KEYS.includes($('#reminderCategory').value) ? $('#reminderCategory').value : 'personal';
+    const repeat = REPEATS.includes($('#reminderRepeat').value) ? $('#reminderRepeat').value : '';
+    const important = $('#reminderImportant').checked;
+    if (form.dataset.id) Store.update('reminders', form.dataset.id, { title, kind, category, repeat, important, date, time, note, done: false });
+    else Store.add('reminders', { title, kind, category, repeat, important, date, time, note, done: false });
     Modal.close('m-reminder');
   }
 
   function toggleReminder(id) {
     const r = Store.get('reminders', id);
-    if (r) Store.update('reminders', id, { done: !r.done });
+    if (r) { Store.update('reminders', id, { done: !r.done }); if (!r.done) fireComplete('reminders', Store.get('reminders', id)); }
   }
 
   function deleteReminder(id) {
@@ -1715,7 +1743,7 @@
   function exposeBridge() {
     window.DAYMATE = Object.freeze({
       APP, Store, Account, Entitlements, UI, Modal, confirmDialog,
-      MEMORY_CATEGORIES, NOTIF_TYPES, NOTIFY_DEFAULTS, FEATURES, COLLECTIONS, REMINDER_KINDS,
+      MEMORY_CATEGORIES, CATEGORIES, PRIORITY_LABEL, PRIORITY_RANK, REPEATS, NOTIF_TYPES, NOTIFY_DEFAULTS, FEATURES, COLLECTIONS, REMINDER_KINDS,
       helpers: { $, $$, esc, icon, plural, cleanText, cleanMultiline, uid, nowISO, pad, todayStr, nowHM, addDays, parseDate, toDateStr,
                  dayLabel, longDate, isValidDate, isValidTime, isStandalone, isIOS, emptyState, kindLabel, kindIcon, safeLS },
       storage: { localAdapter, userCacheKey, safeLS },
@@ -1724,6 +1752,8 @@
       registerActions(map) { Object.assign(actions, map); },
       onRender(fn) { hooks.render.push(fn); },
       onSettingsOpen(fn) { hooks.settingsOpen.push(fn); },
+      onComplete(fn) { hooks.complete.push(fn); },
+      setPresetDate(d) { ui.presetDate = d || ''; },
       get route() { return ui.route; },
     });
     window.dispatchEvent(new CustomEvent('daymate:ready'));

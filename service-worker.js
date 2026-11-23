@@ -6,7 +6,7 @@
    IMPORTANT: bump VERSION every time you deploy changed files. That creates
    a fresh cache and tells installed copies of the app that an update exists.
    ========================================================================== */
-const VERSION = 'v0.2.3';
+const VERSION = 'v0.3.0';
 const CACHE = `daymate-${VERSION}`;
 
 const APP_SHELL = [
@@ -23,7 +23,9 @@ const APP_SHELL = [
   './js/memory.js',
   './js/migration.js',
   './js/notifications.js',
+  './js/planner.js',
   './js/push.js',
+  './js/recur.js',
   './js/schedule.js',
   './js/session.js',
   './js/supabase.js',
