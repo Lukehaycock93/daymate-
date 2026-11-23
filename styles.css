@@ -970,3 +970,18 @@ input[type="time"].input::-webkit-calendar-picker-indicator { filter: invert(0.8
   .sync-dot--syncing, .progress i { animation: none; }
   .switch__ui, .switch__ui::after { transition: none; }
 }
+
+/* ---- Privacy banner (Stage B) ---- */
+.consent {
+  position: fixed; left: 12px; right: 12px; bottom: calc(86px + env(safe-area-inset-bottom)); z-index: 60;
+  max-width: 520px; margin: 0 auto; padding: 18px; border-radius: 20px;
+  background: var(--navy-800); border: 1px solid rgba(255, 255, 255, 0.12); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
+  animation: consent-in 0.35s ease both;
+}
+.consent h2 { font-size: 17px; margin: 0 0 6px; }
+.consent p { margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.consent__btns { display: flex; gap: 10px; }
+.consent__btns .btn { flex: 1; }
+.consent__link { display: inline-block; margin-top: 12px; font-size: 13px; color: var(--blue-400); }
+@keyframes consent-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .consent { animation: none; } }

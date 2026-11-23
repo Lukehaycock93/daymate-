@@ -17,5 +17,9 @@
 export const CONFIG = {
   supabaseUrl: 'https://mmumhmkmzsmjjesclbqi.supabase.co',
   supabaseAnonKey: 'sb_publishable_6V4Wll6Gtjyz9Gr8YyTDew_scha2b2f',
+  // Google Analytics 4 (public id). Only ever loaded after the person says yes.
+  ga4MeasurementId: 'G-YCQ42P39T4',
+  // Shown on the privacy page so people can contact you. Add your support email.
+  contactEmail: 'Luke.haycock93@gmail.com',
   vapidPublicKey: 'BEyPkf0Kk_xM13B89SP9JtkLpLBoUN-7SWfVzt3WYl567IDT0Fbs5QKMD2hPTDpw9dawyRTHN7QaIuWRBwu04B4',
 };
