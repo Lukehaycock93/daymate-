@@ -287,8 +287,9 @@
             <span class="field__label" id="priLabel">Priority</span>
             <div class="seg" role="radiogroup" aria-labelledby="priLabel">
               <label class="seg__opt seg__opt--low"><input type="radio" name="priority" value="low"><span>Low</span></label>
-              <label class="seg__opt seg__opt--medium"><input type="radio" name="priority" value="medium" checked><span>Medium</span></label>
+              <label class="seg__opt seg__opt--medium"><input type="radio" name="priority" value="medium" checked><span>Normal</span></label>
               <label class="seg__opt seg__opt--high"><input type="radio" name="priority" value="high"><span>High</span></label>
+              <label class="seg__opt seg__opt--urgent"><input type="radio" name="priority" value="urgent"><span>Urgent</span></label>
             </div>
           </div>
           <div class="field">
@@ -309,6 +310,18 @@
             </div>
             <p class="field__hint" id="taskTimeHint">Time is optional.</p>
             <p class="field__error" id="taskDateError" role="alert"></p>
+          </div>
+          <div class="field">
+            <div class="field__row">
+              <div class="field__col">
+                <label class="field__label" for="taskCategory">Category</label>
+                <select class="input" id="taskCategory"><option value="personal">Personal</option><option value="family">Family</option><option value="work">Work</option><option value="shopping">Shopping</option><option value="bills">Bills</option></select>
+              </div>
+              <div class="field__col">
+                <label class="field__label" for="taskRepeat">Repeat</label>
+                <select class="input" id="taskRepeat"><option value="">Never</option><option value="daily">Every day</option><option value="weekly">Every week</option><option value="monthly">Every month</option><option value="yearly">Every year</option></select>
+              </div>
+            </div>
           </div>
         </div>
         <div class="sheet__actions">
@@ -363,6 +376,19 @@
               </div>
             </div>
             <p class="field__error" id="reminderDateError" role="alert"></p>
+          </div>
+          <div class="field">
+            <div class="field__row">
+              <div class="field__col">
+                <label class="field__label" for="reminderCategory">Category</label>
+                <select class="input" id="reminderCategory"><option value="personal">Personal</option><option value="family">Family</option><option value="work">Work</option><option value="shopping">Shopping</option><option value="bills">Bills</option></select>
+              </div>
+              <div class="field__col">
+                <label class="field__label" for="reminderRepeat">Repeat</label>
+                <select class="input" id="reminderRepeat"><option value="">Never</option><option value="daily">Every day</option><option value="weekly">Every week</option><option value="monthly">Every month</option><option value="yearly">Every year</option></select>
+              </div>
+            </div>
+            <label class="check-row"><input type="checkbox" id="reminderImportant"> <span>Important date (birthday, renewal…)</span></label>
           </div>
           <div class="field">
             <label class="field__label" for="reminderNote">Note <span class="field__opt">(optional)</span></label>
