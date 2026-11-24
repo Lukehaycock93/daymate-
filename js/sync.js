@@ -123,9 +123,9 @@ export function createSync({ client, user, DM }) {
   }
 
   async function pullEntitlement() {
-    const { data, error } = await client.from('entitlements').select('plan,status,current_period_end').eq('user_id', user.id).maybeSingle();
+    const { data, error } = await client.from('entitlements').select('plan,status,current_period_end,source,will_renew,store').eq('user_id', user.id).maybeSingle();
     if (error) throw error;
-    Account.set({ entitlement: data ? { plan: data.plan, status: data.status, currentPeriodEnd: data.current_period_end } : { plan: 'free', status: 'active', currentPeriodEnd: null } });
+    Account.set({ entitlement: data ? { plan: data.plan, status: data.status, currentPeriodEnd: data.current_period_end, source: data.source, willRenew: data.will_renew, store: data.store } : { plan: 'free', status: 'active', currentPeriodEnd: null, source: 'default', willRenew: null, store: null } });
   }
 
   async function pull() {

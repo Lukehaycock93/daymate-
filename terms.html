@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0a1230">
+  <meta name="color-scheme" content="dark">
+  <title>DAYMATE — Terms of use</title>
+  <link rel="icon" href="icons/favicon-32.png">
+  <style>
+    :root { --bg:#0a1230; --card:#111d42; --text:#eaf0ff; --muted:#a9b6d9; --blue:#4d9bff; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; padding:24px 16px 64px; }
+    main { max-width: 680px; margin: 0 auto; }
+    a { color: var(--blue); }
+    h1 { font-size: 28px; margin: 8px 0 4px; }
+    h2 { font-size: 19px; margin: 32px 0 8px; }
+    p, li { color: var(--muted); }
+    li { margin: 4px 0; }
+    .updated { font-size: 14px; }
+    .box { background: var(--card); border-radius: 16px; padding: 16px 18px; margin: 16px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 14.5px; }
+    td, th { text-align: left; padding: 8px 6px; border-bottom: 1px solid rgba(255,255,255,.1); vertical-align: top; color: var(--muted); }
+    th { color: var(--text); }
+  </style>
+</head>
+<body>
+<main>
+  <p><a href="./">← Back to DAYMATE</a></p>
+  <h1>Terms of use</h1>
+  <p class="updated">Last updated: 24 November 2026</p>
+  <h2>Using DAYMATE</h2>
+  <p>DAYMATE is a personal organiser provided as-is. Please keep your sign-in details safe and don’t misuse the service (for example, trying to bypass limits or access other people’s data). The AI assistant can make mistakes — check anything important, and it never gives medical, legal or financial advice.</p>
+  <h2>Premium subscription</h2>
+  <ul>
+    <li>Premium costs <strong>£2.99 per month</strong> and removes adverts, with a higher AI allowance and extra features as listed on the Premium screen.</li>
+    <li>Payment is charged to your Apple ID, Google Play account or card when you confirm the purchase.</li>
+    <li>It renews automatically each month unless you cancel at least 24 hours before the end of the current period.</li>
+    <li>Cancel any time in your store’s subscription settings. You keep Premium until the end of the paid period; no further charges are made.</li>
+    <li>Refunds are handled by the store you bought from, under their policies and your statutory rights.</li>
+    <li>If Premium ends, your account returns to the Free plan and your saved data is kept.</li>
+    <li>Subscriptions are linked to your DAYMATE account. Sign in on a new device and tap <strong>Restore purchases</strong>.</li>
+  </ul>
+  <h2>Adverts</h2>
+  <p>Free accounts may show adverts if you allow ad cookies. See the <a href="privacy.html#ads">privacy policy</a>.</p>
+  <h2>Deleting your account</h2>
+  <p>You can delete your account in Settings. This permanently removes your data. An active store subscription is not cancelled automatically — cancel it in your store settings.</p>
+  <h2>Changes and contact</h2>
+  <p>We may update these terms as DAYMATE grows; the date above shows the latest version. <span id="contact">Questions can be sent through the app’s support contact.</span></p>
+</main>
+<script type="module">
+  import { CONFIG } from './js/config.js';
+  const e = (CONFIG.contactEmail || '').trim();
+  if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) {
+    const s = document.getElementById('contact');
+    s.textContent = 'Contact: ';
+    const a = document.createElement('a'); a.href = `mailto:${e}`; a.textContent = e; s.appendChild(a); s.append('.');
+  }
+</script>
+</body>
+</html>
