@@ -30,7 +30,7 @@ const results = []; const ok = (n, c, d = '') => results.push([n, !!c, d]);
   await page.fill('#welcomeName', 'Luke'); await page.click('#welcomeForm button[type=submit]');
   await page.waitForSelector('#consentBanner', { timeout: 6000 });
   ok('banner appears after welcome closes', true);
-  ok('no Google request before a choice', g.hits.length === 0);
+  ok('no Google request before a choice', g.hits.length === 0, g.hits.join(','));
   ok('page works behind banner (no errors)', g.errors.length === 0, g.errors.join('|'));
   // B: No thanks
   await page.click('[data-consent="no"]'); await page.waitForTimeout(300);

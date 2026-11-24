@@ -33,7 +33,7 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.3.0',
+    version: '0.3.2',
     stage: 2,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
@@ -1166,6 +1166,10 @@
             <span class="row__text"><strong>Install DAYMATE</strong><small>Add it to your Home Screen like an app</small></span>
             ${icon('chevron', 'row__chev')}
           </button>`}
+          <button type="button" class="row" data-action="check-updates">
+            <span class="row__icon">${icon('repeat')}</span>
+            <span class="row__text"><strong>Check for updates</strong><small id="updateStatus">${esc(updater.waiting ? 'An update is ready — tap to install' : `Version ${APP.version} · tap to check`)}</small></span>
+          </button>
           <button type="button" class="row" data-action="open-settings">
             <span class="row__icon">${icon('sliders')}</span>
             <span class="row__text"><strong>Account & settings</strong><small>Your name, account, backup and data</small></span>
@@ -1588,6 +1592,16 @@
     'open-settings':   () => openSettings(),
     'export-data':     () => exportData(),
     'reset-data':      () => resetData(),
+    'check-updates':   async () => {
+      if (updater.waiting) { applyUpdate(); return; }
+      const el = $('#updateStatus'); if (el) el.textContent = 'Checking…';
+      const r = await checkForUpdates();
+      const msg = r === 'ready' ? 'An update is ready — tap to install' : r === 'latest' ? `You’re up to date · version ${APP.version}`
+        : r === 'unsupported' ? 'Updates are handled by your browser here' : 'Couldn’t check — are you online?';
+      const el2 = $('#updateStatus'); if (el2) el2.textContent = msg;
+      if (r === 'ready') applyUpdate();
+      else UI.toast(msg);
+    },
     'install-app':     async () => {
       if (deferredInstall) {
         const p = deferredInstall; deferredInstall = null;
@@ -1692,22 +1706,48 @@
     if (force === true || sig !== ui.sig) { ui.sig = sig; renderAll(); }
   }
 
+  const updater = { supported: false, reg: null, waiting: null };
+  function applyUpdate() { if (updater.waiting) updater.waiting.postMessage({ type: 'SKIP_WAITING' }); }
+  /** Ask the server for a newer version. Resolves 'ready' | 'latest' | 'unsupported' | 'error'. */
+  async function checkForUpdates() {
+    if (!updater.supported || !updater.reg) return 'unsupported';
+    try {
+      await updater.reg.update();
+      if (updater.reg.waiting) { updater.waiting = updater.reg.waiting; return 'ready'; }
+      if (updater.reg.installing) {
+        await new Promise((resolve) => { const w = updater.reg.installing; w.addEventListener('statechange', () => { if (w.state === 'installed' || w.state === 'redundant') resolve(); }); setTimeout(resolve, 8000); });
+        if (updater.reg.waiting) { updater.waiting = updater.reg.waiting; return 'ready'; }
+      }
+      return 'latest';
+    } catch (_) { return 'error'; }
+  }
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     const secure = window.location.protocol === 'https:' || ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
     if (!secure) return;
     const hadController = !!navigator.serviceWorker.controller;
+    updater.supported = true;
+    const offer = (worker) => {
+      updater.waiting = worker;
+      const el = $('#updateStatus'); if (el) el.textContent = 'An update is ready — tap to install';
+      UI.toast('A new version is ready', { duration: 20000, action: { label: 'Update', fn: applyUpdate } });
+    };
     const start = () => {
       navigator.serviceWorker.register('./service-worker.js', { scope: './' }).then((reg) => {
+        updater.reg = reg;
+        // An update that downloaded last time but was never installed: apply it now, while nothing has been typed yet.
+        if (reg.waiting && navigator.serviceWorker.controller) { updater.waiting = reg.waiting; applyUpdate(); return; }
         reg.addEventListener('updatefound', () => {
           const worker = reg.installing;
           if (!worker) return;
           worker.addEventListener('statechange', () => {
-            if (worker.state === 'installed' && navigator.serviceWorker.controller) {
-              UI.toast('A new version is ready', { duration: 15000, action: { label: 'Update', fn: () => worker.postMessage({ type: 'SKIP_WAITING' }) } });
-            }
+            if (worker.state === 'installed' && navigator.serviceWorker.controller) offer(worker);
           });
         });
+        // Check on every open, whenever the app comes back to the front, and every 30 minutes while it stays open.
+        reg.update().catch(() => {});
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+        setInterval(() => reg.update().catch(() => {}), 30 * 60 * 1000);
       }).catch((err) => console.warn('[DAYMATE] Service worker not registered:', err));
       let reloading = false;
       navigator.serviceWorker.addEventListener('controllerchange', () => {

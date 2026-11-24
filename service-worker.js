@@ -6,7 +6,7 @@
    IMPORTANT: bump VERSION every time you deploy changed files. That creates
    a fresh cache and tells installed copies of the app that an update exists.
    ========================================================================== */
-const VERSION = 'v0.3.0';
+const VERSION = 'v0.3.2';
 const CACHE = `daymate-${VERSION}`;
 
 const APP_SHELL = [
@@ -41,7 +41,8 @@ const APP_SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(APP_SHELL)));
+  // cache:'reload' skips the browser's HTTP cache so a new version never installs stale files.
+  event.waitUntil(caches.open(CACHE).then((cache) => Promise.all(APP_SHELL.map((u) => cache.add(new Request(u, { cache: 'reload' }))))));
   // No automatic skipWaiting: the page offers an "Update" button instead.
 });
 
