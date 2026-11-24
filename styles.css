@@ -1066,3 +1066,50 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 .pl-add .icon { width: 18px; height: 18px; }
 @media (min-width: 700px) { .pl-week { position: static; } }
 @media (prefers-reduced-motion: reduce) { .pl-ghost { transform: none; } }
+
+/* ---- AI assistant (Stage D) ---- */
+.ai { display: flex; flex-direction: column; gap: 12px; }
+.ai-center { text-align: center; padding: 30px 0; }
+.ai-bar { display: flex; gap: 8px; align-items: center; }
+.ai-left { margin-left: auto; font-size: 12.5px; color: var(--muted); }
+.ai-msgs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; min-height: 120px; }
+.ai-msg { display: flex; flex-direction: column; gap: 8px; max-width: 94%; }
+.ai-msg--user { align-self: flex-end; align-items: flex-end; }
+.ai-bubble { padding: 12px 14px; border-radius: 18px; font-size: 15.5px; line-height: 1.5; overflow-wrap: anywhere; background: var(--navy-800); border: 1px solid rgba(255, 255, 255, 0.07); }
+.ai-msg--user .ai-bubble { background: linear-gradient(145deg, rgba(47, 123, 255, 0.75), rgba(47, 123, 255, 0.45)); border-color: rgba(120, 175, 255, 0.4); color: #fff; border-bottom-right-radius: 6px; }
+.ai-msg--assistant .ai-bubble { border-bottom-left-radius: 6px; }
+.ai-typing { display: flex; gap: 5px; padding: 16px 18px; }
+.ai-typing i { width: 8px; height: 8px; border-radius: 50%; background: var(--blue-400); animation: ai-bounce 1.1s infinite ease-in-out; }
+.ai-typing i:nth-child(2) { animation-delay: 0.15s; } .ai-typing i:nth-child(3) { animation-delay: 0.3s; }
+@keyframes ai-bounce { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-4px); } }
+.ai-props { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.ai-prop { padding: 12px 14px; border-radius: 16px; background: rgba(47, 123, 255, 0.08); border: 1px solid rgba(120, 175, 255, 0.28); display: flex; flex-direction: column; gap: 6px; }
+.ai-prop.is-done { opacity: 0.7; border-color: rgba(79, 214, 160, 0.4); background: rgba(79, 214, 160, 0.07); }
+.ai-prop__top { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ai-prop__title { font-size: 16px; }
+.ai-prop__when { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.ai-prop__when .icon { width: 16px; height: 16px; }
+.ai-prop__q { margin: 0; font-size: 14px; color: #ffb84d; }
+.ai-prop__warn { margin: 0; padding: 8px 10px; border-radius: 10px; font-size: 13.5px; color: #ffcf8a; background: rgba(255, 184, 77, 0.12); }
+.ai-prop__ok { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 14px; color: #4fd6a0; font-weight: 650; }
+.ai-prop__ok .icon { width: 16px; height: 16px; }
+.ai-prop__btns { display: flex; gap: 8px; }
+.ai-prop__btns .btn { min-height: 44px; flex: 1; padding: 8px 14px; font-size: 15px; }
+.ai-hello { text-align: center; padding: 18px 6px; list-style: none; }
+.ai-hello p { color: var(--muted); font-size: 14.5px; }
+.ai-starters { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 12px; }
+.ai-form { display: flex; gap: 8px; align-items: flex-end; position: sticky; bottom: calc(76px + env(safe-area-inset-bottom)); padding: 8px 0; background: var(--navy-900); }
+.ai-form textarea { flex: 1; resize: none; min-height: 52px; max-height: 140px; }
+.ai-send { width: 52px; min-width: 52px; padding: 0; }
+.ai-send .icon { width: 22px; height: 22px; }
+.ai-error { margin: 0; padding: 10px 12px; border-radius: 12px; background: rgba(255, 107, 134, 0.1); }
+.ai-consent { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.ai-consent h2 { margin: 4px 0 0; font-size: 20px; }
+.ai-consent p, .ai-consent li { font-size: 14.5px; line-height: 1.55; color: var(--muted); margin: 0; }
+.ai-consent ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
+.ai-consent__btns { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.ai-hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ai-hist li { display: flex; align-items: center; gap: 6px; }
+.ai-hist__open { flex: 1; text-align: left; padding: 10px 6px; font-size: 15px; display: flex; flex-direction: column; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ai-hist__open small { color: var(--muted); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .ai-typing i { animation: none; opacity: 0.7; } }

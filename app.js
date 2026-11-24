@@ -33,7 +33,7 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.3.2',
+    version: '0.4.0',
     stage: 2,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
@@ -49,6 +49,7 @@
     more:      { title: 'More',      sub: 'Account, settings and what’s next' },
     notifications: { title: 'Notifications', sub: 'Reminders, alerts and history' },
     memory:        { title: 'Memory',        sub: 'Things DAYMATE should remember' },
+    assistant:     { title: 'Assistant',     sub: 'Ask, plan and organise in your own words' },
   };
 
   /**
@@ -137,7 +138,7 @@
 
   const ROADMAP = [
     { status: 'soon', icon: 'calendar', title: 'Calendar & email connections', text: 'Connect Google and Microsoft accounts.' },
-    { status: 'soon', icon: 'sparkles', title: 'AI assistant & AI memory',     text: 'A personal assistant that remembers and helps run your day.' },
+    { status: 'soon', icon: 'sparkles', title: 'AI memory',     text: 'Let the assistant suggest things worth remembering, for you to approve.' },
     { status: 'soon', icon: 'card',     title: 'Premium subscriptions',        text: 'Secure payments are still to come.' },
   ];
 
@@ -1145,6 +1146,11 @@
           <a class="row" href="#/notifications">
             <span class="row__icon">${icon('bell')}</span>
             <span class="row__text"><strong>Notification centre</strong><small>${unread ? `${plural(unread, 'unread alert', 'unread alerts')}` : 'Reminders, alerts and history'}</small></span>
+            ${icon('chevron', 'row__chev')}
+          </a>
+          <a class="row" href="#/assistant">
+            <span class="row__icon">${icon('sparkles')}</span>
+            <span class="row__text"><strong>Ask DAYMATE</strong><small>${Account.user ? 'Your AI planning assistant' : 'Sign in to chat with your assistant'}</small></span>
             ${icon('chevron', 'row__chev')}
           </a>
           <a class="row" href="#/memory">

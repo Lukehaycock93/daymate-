@@ -100,3 +100,11 @@ node tests/ui_regression.js                # needs Playwright
 node tests/sync_migration_test.js          # needs Playwright
 # Database: run supabase/tests/rls_and_scheduling_test.sql on a SCRATCH Postgres only (see the file header)
 ```
+
+## AI assistant (Stage D)
+1. Apply `supabase/migrations/005_ai.sql`.
+2. Deploy the `assistant` function (`supabase/functions/assistant`, JWT required).
+3. Add the secret `GEMINI_API_KEY` (Supabase → Edge Functions → Secrets). Never put it in the app or in GitHub.
+4. Optional secrets: `AI_PROVIDER` (`gemini` | `anthropic` | `openai-compatible`), `AI_MODEL`, `AI_BASE_URL`, `AI_API_KEY`.
+Free vs Premium limits live in `supabase/functions/assistant/logic.ts` (`PLAN_LIMITS`). The plan comes from the `entitlements` table, never from the app.
+Tests: `node --experimental-strip-types tests/assistant_logic_test.mjs` and `node tests/assistant_ui_test.js`.
