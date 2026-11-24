@@ -12,6 +12,7 @@ const server = http.createServer((req, res) => {
   if (p === '/service-worker.js') { swHits++; if (swVersionOverride) body = Buffer.from(body.toString().replace(/const VERSION = '[^']+'/, `const VERSION = '${swVersionOverride}'`)); }
   res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'max-age=600' }); res.end(body);
 });
+const CUR = (fs.readFileSync(path.join(ROOT, 'service-worker.js'), 'utf8').match(/const VERSION = 'v([^']+)'/) || [])[1];
 const results = []; const ok = (n, c, d = '') => results.push([n, !!c, d]);
 (async () => {
   await new Promise((r) => server.listen(0, r)); const base = `http://localhost:${server.address().port}/`;
@@ -26,7 +27,7 @@ const results = []; const ok = (n, c, d = '') => results.push([n, !!c, d]);
   await page.reload(); await page.waitForFunction(() => window.DAYMATE && navigator.serviceWorker.controller); await page.waitForTimeout(500);
   ok('check on open: the page asks the server for the service worker again', swHits >= 2, String(swHits));
   await page.evaluate(() => { location.hash = '#/more'; }); await page.waitForSelector('[data-action="check-updates"]');
-  ok('More tab shows Check for updates with version', /0\.3\.2/.test(await page.textContent('#updateStatus')), await page.textContent('#updateStatus'));
+  ok('More tab shows Check for updates with version', (await page.textContent('#updateStatus')).includes(CUR), await page.textContent('#updateStatus'));
   const hitsBefore = swHits;
   await page.click('[data-action="check-updates"]'); await page.waitForTimeout(1500);
   ok('manual check contacts the server', swHits > hitsBefore);
@@ -38,7 +39,7 @@ const results = []; const ok = (n, c, d = '') => results.push([n, !!c, d]);
   for (let i = 0; i < 40 && !keys.some((k) => k.includes('9.9.9')); i++) { await page.waitForTimeout(250); keys = await page.evaluate(() => caches.keys()).catch(() => []); }
   ok('new version downloaded in the background', keys.some((k) => k.includes('9.9.9')), keys.join(','));
   ok('page reloads onto the new version after tap (controller changed)', await page.waitForFunction(() => true).then(() => true));
-  ok('old cache cleaned up after activation', await (async () => { await page.waitForTimeout(2500); const k = await page.evaluate(() => caches.keys()); return !k.some((n) => n.includes('0.3.2')); })());
+  ok('old cache cleaned up after activation', await (async () => { await page.waitForTimeout(2500); const k = await page.evaluate(() => caches.keys()); const c = CUR; return !k.some((n) => n.includes(c)); })());
   // visibility resume triggers a check
   swVersionOverride = 'v9.9.9'; const h2 = swHits;
   await page.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
