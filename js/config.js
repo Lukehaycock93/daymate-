@@ -24,7 +24,7 @@ export const CONFIG = {
   // Premium subscriptions (RevenueCat). Public keys only — the secret key lives on the server.
   // Leave blank until RevenueCat is set up: the app then says subscriptions aren't open yet and charges nothing.
   revenuecat: {
-    webPublicKey: '',          // RevenueCat Web Billing public key (starts rcb_) — for the website/PWA
+    webPublicKey: 'rcb_sb_YSmbJBnvSBnWupjjtsDaKBIQq',          // RevenueCat Web Billing public key (starts rcb_) — for the website/PWA
     nativeApiKeyApple: '',     // RevenueCat public SDK key for iOS (starts appl_) — used by the Capacitor app
     nativeApiKeyGoogle: '',    // RevenueCat public SDK key for Android (starts goog_) — used by the Capacitor app
     sdkVersion: '1.41.1',      // @revenuecat/purchases-js version loaded for web purchases
