@@ -117,10 +117,12 @@ Deno.serve(async (req) => {
 
   const now = Date.now();
   const messageId = crypto.randomUUID();
-  await db.from("ai_messages").insert([
-    { user_id: userId, conversation_id: conversationId, role: "user", content: message, created_at: new Date(now).toISOString() },
+  // Every row carries the same keys (a bulk insert with differing keys would null out the missing ones).
+  const { error: saveErr } = await db.from("ai_messages").insert([
+    { user_id: userId, id: crypto.randomUUID(), conversation_id: conversationId, role: "user", content: message, proposals: null, created_at: new Date(now).toISOString() },
     { user_id: userId, id: messageId, conversation_id: conversationId, role: "assistant", content: reply, proposals: proposals.length ? proposals : null, created_at: new Date(now + 1).toISOString() },
   ]);
+  if (saveErr) console.error("could not save chat", saveErr.code, saveErr.message);
   await db.from("ai_conversations").update({ updated_at: new Date().toISOString() }).eq("user_id", userId).eq("id", conversationId);
 
   return json({ conversationId, messageId, reply, proposals, plan, used: b.used, limit: lim.daily, today });
