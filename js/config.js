@@ -21,5 +21,20 @@ export const CONFIG = {
   ga4MeasurementId: 'G-YCQ42P39T4',
   // Shown on the privacy page so people can contact you. Add your support email.
   contactEmail: 'Luke.haycock93@gmail.com',
+  // Premium subscriptions (RevenueCat). Public keys only — the secret key lives on the server.
+  // Leave blank until RevenueCat is set up: the app then says subscriptions aren't open yet and charges nothing.
+  revenuecat: {
+    webPublicKey: '',          // RevenueCat Web Billing public key (starts rcb_) — for the website/PWA
+    nativeApiKeyApple: '',     // RevenueCat public SDK key for iOS (starts appl_) — used by the Capacitor app
+    nativeApiKeyGoogle: '',    // RevenueCat public SDK key for Android (starts goog_) — used by the Capacitor app
+    sdkVersion: '1.41.1',      // @revenuecat/purchases-js version loaded for web purchases
+    offeringId: '',            // optional: a specific RevenueCat offering; blank = the current one
+  },
+  // Advertising for Free accounts. Blank = no ads anywhere (nothing is requested, no placeholders shown).
+  ads: {
+    provider: 'adsense',       // 'adsense' (web). Native AdMob arrives with the Capacitor apps.
+    adsenseClient: '',         // e.g. 'ca-pub-1234567890123456'
+    slots: { home: '', planner: '', more: '' },   // AdSense ad-unit ids, one per placement
+  },
   vapidPublicKey: 'BEyPkf0Kk_xM13B89SP9JtkLpLBoUN-7SWfVzt3WYl567IDT0Fbs5QKMD2hPTDpw9dawyRTHN7QaIuWRBwu04B4',
 };

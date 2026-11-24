@@ -108,3 +108,33 @@ node tests/sync_migration_test.js          # needs Playwright
 4. Optional secrets: `AI_PROVIDER` (`gemini` | `anthropic` | `openai-compatible`), `AI_MODEL`, `AI_BASE_URL`, `AI_API_KEY`.
 Free vs Premium limits live in `supabase/functions/assistant/logic.ts` (`PLAN_LIMITS`). The plan comes from the `entitlements` table, never from the app.
 Tests: `node --experimental-strip-types tests/assistant_logic_test.mjs` and `node tests/assistant_ui_test.js`.
+
+---
+
+## Part 3 — Premium, lifetime access, ads (what you must still set up)
+
+Everything below is **built and tested in the app/database**, but the live store and ad connections need *your* accounts. Until you do, the app is honest about it: the Upgrade button says "Subscriptions open soon" and no adverts appear.
+
+### 1. RevenueCat (subscriptions)
+1. Create a RevenueCat project. Add an **entitlement** called `premium`, and an **offering** with one **monthly package** priced £2.99.
+2. **Web/PWA:** enable *Web Billing* (it uses Stripe) and copy the public key (starts `rcb_`) into `js/config.js` → `revenuecat.webPublicKey`.
+3. **Apple / Google (needs the Capacitor app — Stage I):** create the subscription product in App Store Connect / Google Play, attach it to the `premium` entitlement, copy the SDK keys (`appl_…`, `goog_…`) into `revenuecat.nativeApiKeyApple` / `nativeApiKeyGoogle`, and add the RevenueCat Capacitor plugin to the native project.
+4. **Webhook:** RevenueCat → Integrations → Webhooks → URL `https://mmumhmkmzsmjjesclbqi.supabase.co/functions/v1/revenuecat`, and set the *Authorization header* to a secret string you choose.
+5. In Supabase → Edge Functions → Secrets add: `REVENUECAT_WEBHOOK_AUTH` (that same string) and `REVENUECAT_SECRET_API_KEY` (RevenueCat secret API key, starts `sk_`). Optional: `REVENUECAT_ENTITLEMENT_ID` (default `premium`).
+6. For store/web **sandbox testing** only, add secret `ALLOW_RC_SANDBOX=true`, test, then delete it (sandbox purchases are ignored otherwise).
+
+### 2. Lifetime Premium
+Already applied to account `0b271515-f8b4-4dc0-b31e-9319d40671b6` (migration 006). A database trigger stops any subscription event from changing it. To give someone else lifetime: SQL editor → `select public.dm_grant_lifetime('<their user id>');`
+
+### 3. Testing both account types
+SQL editor (admin only — the app itself has no switch):
+```sql
+select public.dm_set_test_plan('tester@example.com', 'premium');  -- or 'free'
+```
+Refuses to touch a lifetime account. Sign up a second account with another email to use as your test user.
+
+### 4. Ads
+1. Create a Google AdSense account, add the site, get approved, then create 3 ad units (Home / Planner / More).
+2. Put the publisher id (`ca-pub-…`) and the ad-unit ids into `js/config.js` → `ads`.
+3. UK/EEA: Google requires a certified consent platform for personalised ads. DAYMATE only requests non-personalised ads after an explicit "Allow ads", but before launch consider enabling Google's free *Funding Choices* (Privacy & messaging in AdSense).
+4. Native apps will use AdMob (not built yet).

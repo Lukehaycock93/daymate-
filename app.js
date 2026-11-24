@@ -33,8 +33,8 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.4.0',
-    stage: 2,
+    version: '0.5.0',
+    stage: 3,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
     lastUserKey: 'daymate:lastUser',   // pointer only; never trusted for cloud access
@@ -139,7 +139,6 @@
   const ROADMAP = [
     { status: 'soon', icon: 'calendar', title: 'Calendar & email connections', text: 'Connect Google and Microsoft accounts.' },
     { status: 'soon', icon: 'sparkles', title: 'AI memory',     text: 'Let the assistant suggest things worth remembering, for you to approve.' },
-    { status: 'soon', icon: 'card',     title: 'Premium subscriptions',        text: 'Secure payments are still to come.' },
   ];
 
   const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
@@ -582,8 +581,8 @@
     getPlan() {
       const e = this.entitlement;
       if (!this.user || !e) return 'free';
-      const live = e.plan === 'premium' && ['active', 'trialing'].includes(e.status)
-        && (!e.currentPeriodEnd || new Date(e.currentPeriodEnd) > new Date());
+      const live = e.plan === 'premium' && (e.source === 'lifetime'
+        || (['active', 'trialing'].includes(e.status) && (!e.currentPeriodEnd || new Date(e.currentPeriodEnd) > new Date())));
       return live ? 'premium' : 'free';
     },
     planLabel() { return this.getPlan() === 'premium' ? 'Premium' : 'Free plan'; },
@@ -812,7 +811,7 @@
     const navPlan = $('#navPlan');
     if (navPlan) navPlan.textContent = Account.planLabel();
     const navPlanSub = $('#navPlanSub');
-    if (navPlanSub) navPlanSub.textContent = Account.getPlan() === 'premium' ? 'Thank you for supporting DAYMATE' : 'Premium coming soon';
+    if (navPlanSub) navPlanSub.textContent = Account.getPlan() === 'premium' ? 'Thank you for supporting DAYMATE' : 'No ads · smarter AI · £2.99/month';
   }
 
   /* ---- Home: overview ---- */
@@ -1137,7 +1136,7 @@
 
         <button type="button" class="promo" data-action="open-premium">
           <span class="promo__icon">${icon('sparkles')}</span>
-          <span class="promo__text"><strong>DAYMATE Premium</strong><small>${Account.getPlan() === 'premium' ? 'You have Premium' : 'Coming soon · See what’s planned'}</small></span>
+          <span class="promo__text"><strong>DAYMATE Premium</strong><small>${Account.getPlan() === 'premium' ? (Account.entitlement && Account.entitlement.source === 'lifetime' ? 'Lifetime Premium' : 'You have Premium') : '£2.99/month · No ads, smarter AI'}</small></span>
           ${icon('chevron', 'promo__chev')}
         </button>
 
@@ -1195,43 +1194,8 @@
   }
 
   /* ---- Premium screen ---- */
-  function renderPremium() {
-    $('#premiumFeatures').innerHTML = Entitlements.premiumFeatures().map((f) => `
-      <li class="pfeat" data-feature="${esc(f.id)}">
-        <span class="pfeat__icon">${icon(f.icon)}</span>
-        <span class="pfeat__text"><strong>${esc(f.title)}</strong><small>${esc(f.text)}</small></span>
-        ${icon('lock', 'pfeat__lock')}
-      </li>`).join('');
-
-    $('#premiumMocks').innerHTML = `
-      <div class="mock" aria-label="Example: AI assistant">
-        <div class="mock__tag"><span>AI assistant · Example</span>${icon('lock')}</div>
-        <div class="mock__bubble mock__bubble--me">What’s on tomorrow?</div>
-        <div class="mock__bubble mock__bubble--ai">You have 3 tasks and a 2:30pm appointment. Want me to plan around it?</div>
-      </div>
-      <div class="mock" aria-label="Example: smart reminder">
-        <div class="mock__tag"><span>Smart reminder · Example</span>${icon('lock')}</div>
-        <p class="mock__title">Bins out tonight</p>
-        <p class="mock__text">Repeats every Tuesday and nudges you until it’s ticked off.</p>
-      </div>
-      <div class="mock" aria-label="Example: bill tracking">
-        <div class="mock__tag"><span>Bills · Example</span>${icon('lock')}</div>
-        <p class="mock__title">Energy bill due in 3 days</p>
-        <div class="mock__meter"><i></i></div>
-        <p class="mock__small">68% of this month’s bills paid</p>
-      </div>`;
-    const pill = $('.plan-pill');
-    if (pill) pill.innerHTML = `<span class="plan-pill__dot"></span>${Account.getPlan() === 'premium' ? 'You have Premium' : 'You’re on the Free plan'}`;
-    updateNotifyButton();
-  }
-
-  function updateNotifyButton() {
-    const on = Store.state.settings.premiumInterest;
-    const btn = $('#premiumNotify');
-    btn.classList.toggle('is-on', on);
-    btn.textContent = on ? '✓ You’re on the list' : 'Notify me at launch';
-    btn.setAttribute('aria-pressed', String(on));
-  }
+  let premiumRenderer = null;
+  function renderPremium() { if (premiumRenderer) premiumRenderer(); }
 
   function openPremium(featureId) {
     renderPremium();
@@ -1260,7 +1224,6 @@
     renderRoute();
     if (ui.route !== 'home') { renderOverview(); }     // keeps the shopping badge etc. correct
     if (Modal.isOpen('m-shopping')) renderShopping();
-    if (Modal.isOpen('m-premium')) updateNotifyButton();
     runHooks(hooks.render);
   }
 
@@ -1588,12 +1551,6 @@
     'toggle-done-reminders': () => { ui.showDone = !ui.showDone; renderUpcoming(); },
 
     'open-premium':    (el) => openPremium(el.dataset.feature || ''),
-    'notify-premium':  () => {
-      const on = !Store.state.settings.premiumInterest;
-      Store.setSettings({ premiumInterest: on });
-      updateNotifyButton();
-      if (on) UI.toast(Account.user ? 'You’re on the list.' : 'You’re on the list. Saved on this device for now.');
-    },
 
     'open-settings':   () => openSettings(),
     'export-data':     () => exportData(),
@@ -1794,6 +1751,7 @@
                  dayLabel, longDate, isValidDate, isValidTime, isStandalone, isIOS, emptyState, kindLabel, kindIcon, safeLS },
       storage: { localAdapter, userCacheKey, safeLS },
       views: { upcomingItems, isReminderOverdue, openPremium, openTaskSheet, openReminderSheet, renderAll },
+      setPremiumRenderer(fn) { premiumRenderer = fn; },
       registerRoute(name, cfg) { extraRoutes[name] = cfg; if (ui.route === name) renderAll(); },
       registerActions(map) { Object.assign(actions, map); },
       onRender(fn) { hooks.render.push(fn); },
