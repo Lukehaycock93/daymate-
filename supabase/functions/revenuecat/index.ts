@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     catch (_) { return json({ error: "provider_error" }, 502); }
     if (res.status === 404) return json({ ok: true, plan: "free" });
     if (!res.ok) { console.error("revenuecat api", res.status); return json({ error: "provider_error" }, 502); }
-    const upd = fromSubscriber(await res.json(), { entitlementId });
+    const upd = fromSubscriber(await res.json(), { entitlementId, allowSandbox: Deno.env.get("ALLOW_RC_SANDBOX") === "true" });
     // Never replace a test/manual grant with "free" just because RevenueCat has never heard of this person.
     if (upd.plan === "free" && cur && (cur.source === "test" || cur.source === "manual")) return json({ ok: true, kept: cur.source });
     try { await write(userId, upd, null); } catch (_) { return json({ error: "server_error" }, 500); }
