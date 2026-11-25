@@ -18,7 +18,7 @@ const inst = { async getOfferings() { return { current: { monthly: { id: 'monthl
 export const Purchases = { configure(o) { configured = o; log.push('configure:' + o.appUserId + ':' + o.apiKey); return inst; }, getSharedInstance() { return inst; } };
 `;
 const CONFIGURED = (src) => src
-  .replace("webPublicKey: ''", "webPublicKey: 'rcb_test_key'")
+  .replace(/webPublicKey: '[^']*'/, "webPublicKey: 'rcb_test_key'")
   .replace("adsenseClient: ''", "adsenseClient: 'ca-pub-1234567890123456'")
   .replace("slots: { home: '', planner: '', more: '' }", "slots: { home: '1111111111', planner: '2222222222', more: '3333333333' }");
 
@@ -28,6 +28,7 @@ async function newPage(browser, base, { configured }) {
   await ctx.route(/supabase\.co|googletagmanager/, (r) => r.abort());
   await ctx.route(/pagead2\.googlesyndication\.com/, (r) => { adReq.push(r.request().url()); r.fulfill({ status: 200, contentType: 'text/javascript', body: '' }); });
   await ctx.route(/cdn\.jsdelivr\.net/, (r) => { cdn.push(r.request().url()); r.fulfill({ status: 200, contentType: 'text/javascript', body: FAKE_SDK }); });
+  if (!configured) await ctx.route('**/js/config.js', async (r) => { const body = fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf8'); r.fulfill({ status: 200, contentType: 'text/javascript', body: body.replace(/webPublicKey: '[^']*'/, "webPublicKey: ''") }); });
   if (configured) await ctx.route('**/js/config.js', async (r) => { const body = fs.readFileSync(path.join(ROOT, 'js/config.js'), 'utf8'); r.fulfill({ status: 200, contentType: 'text/javascript', body: CONFIGURED(body) }); });
   await ctx.addInitScript(() => { try { localStorage.setItem('daymate:consent', JSON.stringify({ analytics: false })); } catch (_) {} });
   const page = await ctx.newPage(); const errors = []; page.on('pageerror', (e) => errors.push(e.message));
