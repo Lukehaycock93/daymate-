@@ -96,7 +96,8 @@ export function initBilling(DM) {
   /* ---------------- RevenueCat SDKs ---------------- */
   async function webSdk() {
     if (!st.sdk) {
-      const mod = await import(`https://cdn.jsdelivr.net/npm/@revenuecat/purchases-js@${encodeURIComponent(RC().sdkVersion)}/+esm`);
+      let mod;
+      try { mod = await import(`https://cdn.jsdelivr.net/npm/@revenuecat/purchases-js@${encodeURIComponent(RC().sdkVersion)}/+esm`); } catch (_) { throw new Error('sdk_load'); }
       st.sdk = mod;
     }
     const { Purchases } = st.sdk;
@@ -149,7 +150,12 @@ export function initBilling(DM) {
       else say('Your purchase went through but hasn’t been confirmed yet. It will show here shortly — or tap Restore purchases.');
     } catch (err) {
       const cancelled = err && (err.errorCode === 1 || err.userCancelled === true || /cancel/i.test(String(err.message || '')));
-      say(cancelled ? '' : 'Sorry, the purchase didn’t complete. You haven’t been charged. Please try again.');
+      const why = err && err.message === 'no_package' ? 'No web subscription is set up in RevenueCat yet (the offering has no web product).'
+        : err && err.message === 'sdk_load' ? 'The payment library couldn’t load. Check your connection and try again.'
+          : '';
+      const code = err && (err.errorCode != null ? `code ${err.errorCode}` : '') + (err && err.underlyingErrorMessage ? ` ${String(err.underlyingErrorMessage).slice(0, 80)}` : '');
+      console.error('[DAYMATE] purchase failed', err);
+      say(cancelled ? '' : `${why || 'Sorry, the purchase didn’t complete.'} You haven’t been charged.${!why && code ? ` (${code.trim()})` : ''}`);
     } finally { st.busy = false; render(); }
   }
 
