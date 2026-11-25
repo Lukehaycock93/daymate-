@@ -37,7 +37,7 @@ export function describePlan(account, now = new Date()) {
   const e = account.entitlement;
   const premium = account.getPlan() === 'premium';
   if (!premium) {
-    const lapsed = !!e && e.source !== 'lifetime' && (e.plan === 'premium' || (e.source === 'revenuecat' && e.status === 'canceled'));
+    const lapsed = !!e && e.source !== 'lifetime' && !!e.currentPeriodEnd && (e.plan === 'premium' || (e.source === 'revenuecat' && e.status === 'canceled'));   // only if there really was a subscription
     return { premium: false, lifetime: false, line: lapsed ? 'Your Premium has ended — you’re back on the Free plan. Your data is all still here.' : 'You’re on the Free plan', canManage: false };
   }
   if (e.source === 'lifetime') return { premium: true, lifetime: true, line: 'Lifetime Premium — thank you for backing DAYMATE', canManage: false };

@@ -129,6 +129,10 @@ const closeModal = async (page) => { await page.evaluate(() => DAYMATE.Modal.clo
     await setEnt(page, LIFE); await setEnt(page, FREE);
     ok('B tasks unchanged across tier changes', (await page.evaluate(() => DAYMATE.Store.state.tasks.length)) === before);
 
+    // a never-subscribed account whose server row says free/canceled must NOT claim Premium "ended"
+    await setEnt(page, { plan: 'free', status: 'canceled', currentPeriodEnd: null, source: 'revenuecat', willRenew: false, store: null });
+    await openPaywall(page); ok('B never-subscribed account just says Free plan', /You’re on the Free plan/.test(await page.textContent('#m-premium')) && !/has ended/.test(await page.textContent('#m-premium'))); await closeModal(page);
+
     // restore
     await page.evaluate(() => { window.__srv.refreshPlan = () => ({ plan: 'premium', status: 'active', current_period_end: new Date(Date.now() + 5 * 864e5).toISOString(), source: 'revenuecat', will_renew: false, store: 'play_store' }); });
     await openPaywall(page); await page.click('[data-action="restore-purchases"]'); await page.waitForTimeout(800);
