@@ -39,6 +39,8 @@ ok(u.plan === 'free', 'restore expired → free');
 u = fromSubscriber(sub(null), { entitlementId: 'premium', now: NOW }); ok(u.plan === 'free', 'no entitlement → free');
 u = fromSubscriber(sub({ expires_date: new Date(NOW + D).toISOString(), product_identifier: 'p' }, { p: { is_sandbox: true } }), { entitlementId: 'premium', now: NOW });
 ok(u.plan === 'free', 'sandbox subscription never grants');
+u = fromSubscriber(sub({ expires_date: new Date(NOW + D).toISOString(), product_identifier: 'p' }, { p: { is_sandbox: true, store: 'stripe' } }), { entitlementId: 'premium', now: NOW, allowSandbox: true });
+ok(u.plan === 'premium', 'sandbox subscription grants when testing is switched on (so restore does not undo a test purchase)');
 u = fromSubscriber({}, { entitlementId: 'premium', now: NOW }); ok(u.plan === 'free', 'garbage → free');
 ok(timingSafeEqual('abc', 'abc') && !timingSafeEqual('abc', 'abd') && !timingSafeEqual('abc', 'abcd') && !timingSafeEqual('', 'x'), 'secret compare');
 console.log(`${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

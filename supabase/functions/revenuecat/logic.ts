@@ -53,7 +53,7 @@ export function decide(ev: Record<string, unknown>, opts: { entitlementId: strin
 }
 
 /** RevenueCat REST `GET /v1/subscribers/{id}` → what to write (used by "Restore purchases"/refresh). */
-export function fromSubscriber(json: unknown, opts: { entitlementId: string; now?: number }): Update {
+export function fromSubscriber(json: unknown, opts: { entitlementId: string; now?: number; allowSandbox?: boolean }): Update {
   const now = opts.now ?? Date.now();
   const sub = ((json as Record<string, unknown>)?.subscriber ?? {}) as Record<string, any>;
   const ent = sub.entitlements?.[opts.entitlementId];
@@ -62,7 +62,7 @@ export function fromSubscriber(json: unknown, opts: { entitlementId: string; now
   const expMs = ent.expires_date ? Date.parse(ent.expires_date) : null;
   if (expMs !== null && !(expMs > now)) return { ...free, currentPeriodEnd: iso(expMs), productId: ent.product_identifier ?? null };
   const s = sub.subscriptions?.[ent.product_identifier] ?? {};
-  if (s.is_sandbox === true) return free;                              // sandbox never grants real Premium here
+  if (s.is_sandbox === true && !opts.allowSandbox) return free;        // sandbox never grants real Premium unless testing is switched on
   return {
     plan: "premium", status: s.period_type === "trial" ? "trialing" : "active",
     currentPeriodEnd: expMs === null ? null : iso(expMs), willRenew: expMs === null ? false : !s.unsubscribe_detected_at,
