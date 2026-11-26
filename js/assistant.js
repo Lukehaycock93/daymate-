@@ -516,52 +516,82 @@ export function initAssistant(DM) {
     'open-ai': () => openSheet(),
   });
 
-  /* ---- Home town for weather answers (Settings) ---- */
-  const home = { name: '', results: null, busy: false, msg: '' };
+  /* ---- Location & weather (Settings) ---- */
+  const home = { name: '', lat: null, lon: null, results: null, busy: false, msg: '', wx: null, wxFor: '' };
+  const WX = { 0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Fog', 51: 'Drizzle', 53: 'Drizzle', 55: 'Drizzle', 56: 'Drizzle', 57: 'Drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Freezing rain', 71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow', 80: 'Showers', 81: 'Showers', 82: 'Heavy showers', 85: 'Snow showers', 86: 'Snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm', 99: 'Thunderstorm' };
+  const UK_POSTCODE = /^[A-Za-z]{1,2}\d[A-Za-z\d]?\s*\d[A-Za-z]{2}$/;
+  const r2 = (n) => Math.round(n * 100) / 100;
   async function loadHome() {
     if (!Account.configured || !session.user) { home.name = ''; return; }
     try {
-      const { data } = await session.client.from('user_preferences').select('home_name').eq('user_id', session.user.id).maybeSingle();
-      home.name = (data && data.home_name) || '';
+      const { data } = await session.client.from('user_preferences').select('home_name,home_lat,home_lon').eq('user_id', session.user.id).maybeSingle();
+      home.name = (data && data.home_name) || ''; home.lat = data ? data.home_lat : null; home.lon = data ? data.home_lon : null;
     } catch (_) { /* leave as is */ }
   }
+  async function loadWeather() {
+    if (!home.name || home.lat == null) { home.wx = null; return; }
+    const key = `${home.lat},${home.lon}`; if (home.wx && home.wxFor === key) return;
+    try {
+      const q = `latitude=${home.lat}&longitude=${home.lon}&current=temperature_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=4&wind_speed_unit=mph`;
+      const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`); const j = await r.json();
+      if (j && j.current && j.daily) { home.wx = j; home.wxFor = key; }
+    } catch (_) { home.wx = null; }
+  }
+  function weatherCard() {
+    const j = home.wx; if (!j) return home.name ? '<p class="fine">Weather isn’t available right now.</p>' : '';
+    const label = (c) => WX[c] || 'Mixed';
+    const days = j.daily.time.slice(1, 4).map((t, i) => `<li><span>${esc(new Date(t + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' }))}</span><span>${esc(label(j.daily.weather_code[i + 1]))}</span><strong>${Math.round(j.daily.temperature_2m_min[i + 1])}–${Math.round(j.daily.temperature_2m_max[i + 1])}°</strong></li>`).join('');
+    return `<div class="ai-wx"><div class="ai-wx__now"><strong>${Math.round(j.current.temperature_2m)}°C</strong><span>${esc(label(j.current.weather_code))} · wind ${Math.round(j.current.wind_speed_10m)} mph</span></div>
+      <p class="fine">Today: ${Math.round(j.daily.temperature_2m_min[0])}–${Math.round(j.daily.temperature_2m_max[0])}°C${j.daily.precipitation_probability_max[0] != null ? `, ${j.daily.precipitation_probability_max[0]}% chance of rain` : ''}</p>
+      <ul class="ai-wx__days">${days}</ul></div>`;
+  }
   function homeField() {
-    const about = document.getElementById('settingsAbout'); if (!about) return;
+    const anchor = document.getElementById('themeLabel'); if (!anchor) return;
     let box = document.getElementById('homeField');
-    if (!Account.configured || !session.user) { if (box) box.remove(); return; }
-    if (!box) { box = document.createElement('div'); box.className = 'field'; box.id = 'homeField'; about.parentNode.insertBefore(box, about); }
+    if (!box) { box = document.createElement('div'); box.className = 'field'; box.id = 'homeField'; anchor.closest('.field').parentNode.insertBefore(box, anchor.closest('.field')); }
+    if (!Account.configured || !session.user) {
+      box.innerHTML = `<span class="field__label">Location &amp; weather</span><p class="field__hint">Sign in to set your postcode or town. Daymate AI then uses the weather for your plans.</p>`; return;
+    }
     box.innerHTML = `
-      <label class="field__label" for="homeInput">Home town (for weather in Daymate AI)</label>
-      <div class="ai-home"><input class="input" id="homeInput" type="text" maxlength="60" placeholder="e.g. Leeds" autocomplete="off" enterkeyhint="search" value="">
+      <label class="field__label" for="homeInput">Location &amp; weather</label>
+      <div class="ai-home"><input class="input" id="homeInput" type="text" maxlength="60" placeholder="Postcode or town, e.g. LS6 1AA" autocomplete="postal-code" enterkeyhint="search">
         <button type="button" class="btn btn--ghost btn--sm" data-action="home-search">Find</button></div>
-      <p class="fine" id="homeMsg">${esc(home.msg || (home.name ? `Saved: ${home.name}. Only the town name and its map position are stored.` : 'Not set. Only the town name and its map position are stored.'))}</p>
+      <p class="field__hint" id="homeMsg">${esc(home.msg || (home.name ? `Home: ${home.name}. Only the area name and its approximate map position are saved, never your full postcode.` : 'Not set yet. Only the area name and its approximate map position are saved, never your full postcode.'))}</p>
       ${home.results ? `<ul class="ai-home__list">${home.results.map((r, i) => `<li><button type="button" class="row" data-action="home-pick" data-i="${i}"><span class="row__text"><strong>${esc(r.name)}</strong><small>${esc(r.sub)}</small></span></button></li>`).join('')}</ul>` : ''}
-      ${home.name ? '<button type="button" class="link-btn" data-action="home-clear">Remove my home town</button>' : ''}`;
+      ${weatherCard()}
+      ${home.name ? '<button type="button" class="link-btn" data-action="home-clear">Remove my location</button>' : ''}`;
   }
   async function homeSearch() {
-    const q = (document.getElementById('homeInput') || {}).value || '';
-    if (q.trim().length < 2 || home.busy) return;
+    const q = ((document.getElementById('homeInput') || {}).value || '').trim();
+    if (q.length < 2 || home.busy) return;
     home.busy = true; home.msg = 'Searching…'; home.results = null; homeField();
     try {
-      const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q.trim())}&count=5&language=en&format=json`);
-      const j = await r.json();
-      home.results = (j.results || []).map((x) => ({ name: x.name, sub: [x.admin1, x.country].filter(Boolean).join(', '), lat: Math.round(x.latitude * 100) / 100, lon: Math.round(x.longitude * 100) / 100 }));
-      home.msg = home.results.length ? 'Pick your town:' : 'No town found. Try another spelling.';
+      if (UK_POSTCODE.test(q)) {
+        const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(q.replace(/\s+/g, ''))}`); const j = await r.json();
+        const x = j && j.result;
+        home.results = x && x.latitude != null ? [{ name: [x.outcode, x.admin_district].filter(Boolean).join(', '), sub: [x.parish && x.parish !== x.admin_district ? x.parish : '', x.country].filter(Boolean).join(', ') || 'United Kingdom', lat: r2(x.latitude), lon: r2(x.longitude) }] : [];
+        home.msg = home.results.length ? 'Is this you?' : 'I couldn’t find that postcode. Check it, or try your town.';
+      } else {
+        const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=en&format=json`); const j = await r.json();
+        home.results = (j.results || []).map((x) => ({ name: [x.name, x.admin1].filter((v, i, a) => v && a.indexOf(v) === i).join(', '), sub: x.country || '', lat: r2(x.latitude), lon: r2(x.longitude) }));
+        home.msg = home.results.length ? 'Pick your town:' : 'No town found. Try another spelling or a postcode.';
+      }
     } catch (_) { home.msg = navigator.onLine ? 'Couldn’t search just now. Try again.' : 'You’re offline.'; }
     home.busy = false; homeField();
   }
   async function homeSave(vals) {
     const { error } = await session.client.from('user_preferences').update(vals).eq('user_id', session.user.id);
     if (error) { home.msg = 'Couldn’t save that. Try again.'; homeField(); return; }
-    home.name = vals.home_name || ''; home.results = null; home.msg = ''; homeField();
-    UI.toast(vals.home_name ? 'Home town saved' : 'Home town removed');
+    home.name = vals.home_name || ''; home.lat = vals.home_lat; home.lon = vals.home_lon; home.results = null; home.msg = ''; home.wx = null;
+    homeField(); UI.toast(vals.home_name ? 'Location saved' : 'Location removed');
+    await loadWeather(); homeField();
   }
   DM.registerActions({
     'home-search': () => homeSearch(),
-    'home-pick': (el) => { const r = home.results && home.results[Number(el.dataset.i)]; if (r) homeSave({ home_name: [r.name, r.sub.split(', ')[0]].filter((v, i, a) => v && a.indexOf(v) === i).join(', ').slice(0, 80), home_lat: r.lat, home_lon: r.lon }); },
+    'home-pick': (el) => { const r = home.results && home.results[Number(el.dataset.i)]; if (r) homeSave({ home_name: r.name.slice(0, 80), home_lat: r.lat, home_lon: r.lon }); },
     'home-clear': () => homeSave({ home_name: null, home_lat: null, home_lon: null }),
   });
-  DM.onSettingsOpen(async () => { home.results = null; home.msg = ''; homeField(); await loadHome(); homeField(); });
+  DM.onSettingsOpen(async () => { home.results = null; home.msg = ''; homeField(); await loadHome(); homeField(); await loadWeather(); homeField(); });
   DM.registerRoute('assistant', { render });
   DM.onRender(() => { syncFab(); if (ui.sheetOpen) renderSheet(); });
   syncFab();
