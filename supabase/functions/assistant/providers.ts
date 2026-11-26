@@ -36,7 +36,7 @@ function gemini(key: string, model: string): Provider {
         {
           systemInstruction: { parts: [{ text: system }] },
           contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
-          generationConfig: { responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA, temperature: 0.3, maxOutputTokens: 1200 },
+          generationConfig: { responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA, temperature: 0.3, maxOutputTokens: 2000 },
         }, signal);
       const text = j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
       if (!text) throw new ProviderError(`empty response (${j?.candidates?.[0]?.finishReason ?? j?.promptFeedback?.blockReason ?? "unknown"})`, 200, false);

@@ -7,11 +7,15 @@ import { initPlanner } from './planner.js';
 import { initAssistant } from './assistant.js';
 import { initBilling } from './billing.js';
 import { initAds } from './ads.js';
+import { initTheme } from './theme.js';
+import { initDashboard } from './dashboard.js';
 
 const ready = () => (window.DAYMATE ? Promise.resolve(window.DAYMATE)
   : new Promise((resolve) => window.addEventListener('daymate:ready', () => resolve(window.DAYMATE), { once: true })));
 
 ready().then((DM) => {
+  try { initTheme(DM); } catch (err) { console.error('[DAYMATE] Appearance failed to start:', err); }
+  try { initDashboard(DM); } catch (err) { console.error('[DAYMATE] Dashboard failed to start:', err); }
   try { initPlanner(DM); } catch (err) { console.error('[DAYMATE] Planner failed to start:', err); }
   try { initAssistant(DM); } catch (err) { console.error('[DAYMATE] Assistant failed to start:', err); }
   try { initBilling(DM); } catch (err) { console.error('[DAYMATE] Premium screen failed to start:', err); }

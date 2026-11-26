@@ -20,7 +20,13 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="format-detection" content="telephone=no">
 
+  <script>/* Apply the saved appearance before first paint (no flash). Kept in step by js/theme.js. */
+    (function () { try { var p = localStorage.getItem('daymate:theme'); var l = p === 'light' || (p !== 'dark' && window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches);
+      var r = document.documentElement; r.dataset.theme = l ? 'light' : 'dark';
+      document.querySelector('meta[name="theme-color"]').setAttribute('content', l ? '#f3f6fc' : '#0a1230'); document.querySelector('meta[name="color-scheme"]').setAttribute('content', l ? 'light' : 'dark'); } catch (e) { document.documentElement.dataset.theme = 'dark'; } })();
+  </script>
   <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="assistant.css">
 </head>
 <body>
 
@@ -440,6 +446,15 @@
             <label class="field__label" for="settingsName">Your name</label>
             <input class="input" id="settingsName" type="text" maxlength="30" placeholder="What should we call you?" autocomplete="given-name" enterkeyhint="done">
             <p class="field__hint">Used for your greeting. Saved to your account when you’re signed in.</p>
+          </div>
+          <div class="field">
+            <span class="field__label" id="themeLabel">Appearance</span>
+            <div class="seg" id="themeSeg" role="radiogroup" aria-labelledby="themeLabel">
+              <label class="seg__opt"><input type="radio" name="theme" value="auto" checked><span>Auto</span></label>
+              <label class="seg__opt"><input type="radio" name="theme" value="light"><span>Light</span></label>
+              <label class="seg__opt"><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+            </div>
+            <p class="field__hint">Auto follows your phone’s light or dark setting.</p>
           </div>
           <div class="field">
             <span class="field__label">Plan</span>
