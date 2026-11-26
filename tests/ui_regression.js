@@ -71,7 +71,7 @@ const results = []; const ok = (n, c, d = '') => { results.push([n, !!c, d]); };
   // Memory
   await page.goto(base + '#/memory'); await page.waitForTimeout(400);
   ok('memory route shows empty state', (await page.textContent('#view-memory')).includes('Nothing remembered yet'));
-  ok('memory says automatic collection unavailable', (await page.textContent('#view-memory')).includes('isn’t available yet'));
+  ok('memory explains approve-before-save', (await page.textContent('#view-memory')).includes('Nothing is saved until you tap Save'));
   ok('pause toggle checked by default', await page.isChecked('[data-memory-pause]'));
   await page.click('#view-memory button.btn--primary >> text=Add a memory'); await page.waitForTimeout(250);
   ok('9 categories offered', (await page.locator('#memoryCategory option').count()) === 9);

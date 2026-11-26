@@ -4,10 +4,10 @@
 //   gemini            (default)  secret GEMINI_API_KEY or AI_API_KEY
 //   anthropic                    secret ANTHROPIC_API_KEY or AI_API_KEY
 //   openai-compatible            secret AI_API_KEY, optional AI_BASE_URL (OpenAI, OpenRouter, Groq, local servers…)
-import { RESPONSE_SCHEMA } from "./logic.ts";
+import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_WITH_MEMORY } from "./logic.ts";
 
 export type Msg = { role: "user" | "assistant"; content: string };
-export type CompleteArgs = { system: string; messages: Msg[]; signal?: AbortSignal };
+export type CompleteArgs = { system: string; messages: Msg[]; signal?: AbortSignal; withMemory?: boolean };
 export type Provider = { name: string; model: string; complete: (a: CompleteArgs) => Promise<string> };
 export class ProviderError extends Error {
   status: number; retryable: boolean;
@@ -30,13 +30,13 @@ async function post(url: string, headers: Record<string, string>, body: unknown,
 function gemini(key: string, model: string): Provider {
   return {
     name: "gemini", model,
-    async complete({ system, messages, signal }) {
+    async complete({ system, messages, signal, withMemory }) {
       const j = await post(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         { "x-goog-api-key": key },
         {
           systemInstruction: { parts: [{ text: system }] },
           contents: messages.map((m) => ({ role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] })),
-          generationConfig: { responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA, temperature: 0.3, maxOutputTokens: 2000 },
+          generationConfig: { responseMimeType: "application/json", responseSchema: withMemory ? RESPONSE_SCHEMA_WITH_MEMORY : RESPONSE_SCHEMA, temperature: 0.3, maxOutputTokens: 2000 },
         }, signal);
       const text = j?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("") ?? "";
       if (!text) throw new ProviderError(`empty response (${j?.candidates?.[0]?.finishReason ?? j?.promptFeedback?.blockReason ?? "unknown"})`, 200, false);
@@ -51,7 +51,7 @@ function anthropic(key: string, model: string): Provider {
     async complete({ system, messages, signal }) {
       const j = await post("https://api.anthropic.com/v1/messages",
         { "x-api-key": key, "anthropic-version": "2023-06-01" },
-        { model, max_tokens: 1200, temperature: 0.3, system: `${system}\n\nRespond with a single JSON object only: {"reply": string, "proposals": [...]}.`, messages }, signal);
+        { model, max_tokens: 1200, temperature: 0.3, system: `${system}\n\nRespond with a single JSON object only: {"reply": string, "proposals": [...], "memory_suggestions": [...]}.`, messages }, signal);
       const text = (j?.content ?? []).map((c: { text?: string }) => c.text ?? "").join("");
       if (!text) throw new ProviderError("empty response", 200, false);
       return text;
