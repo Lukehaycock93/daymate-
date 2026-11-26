@@ -6,6 +6,41 @@ export const OPS = ["add", "update", "delete", "complete"] as const;
 export const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 export const CATEGORIES = ["personal", "family", "work", "shopping", "bills"] as const;
 export const REPEATS = ["", "daily", "weekly", "monthly", "yearly"] as const;
+export const MEMORY_KEYS = [
+  "personal_preferences", "daily_routines", "household", "important_dates", "goals",
+  "shopping_preferences", "meal_preferences", "ongoing_projects", "conversation_info",
+] as const;
+
+/** Things DAYMATE never suggests remembering, even for approval (health, money, credentials, beliefs, identity, safety). */
+const SENSITIVE = new RegExp("\\b(" + [
+  "password", "passcode", "pin", "cvv", "card number", "iban", "sort code", "account number", "salary", "income", "debt", "credit score",
+  "diagnos\\w*", "medic\\w*", "prescri\\w*", "health", "illness", "disease", "cancer", "pregnan\\w*", "therap\\w*", "depress\\w*", "anxiety", "mental",
+  "religio\\w*", "church", "mosque", "politic\\w*", "vote", "sexual\\w*", "gay", "lesbian", "transgender", "ethnic\\w*", "immigra\\w*", "visa", "passport",
+  "national insurance", "criminal", "arrest\\w*", "police", "abuse\\w*", "suicid\\w*", "self.?harm", "eating disorder",
+].join("|") + ")\\b", "i");
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+
+export type MemorySuggestion = { category: string; content: string };
+/** Validate the model's "remember this?" ideas. Max 2, short, never sensitive, never a duplicate of something already kept. */
+export function sanitizeMemorySuggestions(raw: unknown, existing: string[] = [], max = 2): MemorySuggestion[] {
+  if (!Array.isArray(raw)) return [];
+  const have = existing.map(norm).filter(Boolean);
+  const out: MemorySuggestion[] = [];
+  for (const r of raw) {
+    if (out.length >= max) break;
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    const content = clip(o.content, 300);
+    if (content.length < 8) continue;
+    if (SENSITIVE.test(content)) continue;
+    const n = norm(content);
+    if (have.some((h) => h === n || h.includes(n) || n.includes(h))) continue;
+    const category = oneOf(MEMORY_KEYS, o.category, "conversation_info");
+    out.push({ category, content });
+    have.push(n);
+  }
+  return out;
+}
 
 /** Free vs Premium. The plan itself comes from the server-side entitlements table. */
 export const PLAN_LIMITS = {
@@ -149,7 +184,7 @@ export function markConflicts(proposals: Proposal[], existing: Busy[]): Proposal
 }
 
 /** Models sometimes wrap JSON in ``` fences or add chatter. Returns null if nothing usable. */
-export function parseModelJson(text: string): { reply: string; proposals: unknown } | null {
+export function parseModelJson(text: string): { reply: string; proposals: unknown; memories?: unknown } | null {
   if (typeof text !== "string") return null;
   let t = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const a = t.indexOf("{"), b = t.lastIndexOf("}");
@@ -158,7 +193,7 @@ export function parseModelJson(text: string): { reply: string; proposals: unknow
   try {
     const j = JSON.parse(t);
     if (!j || typeof j !== "object") return null;
-    return { reply: typeof j.reply === "string" ? j.reply : "", proposals: j.proposals };
+    return { reply: typeof j.reply === "string" ? j.reply : "", proposals: j.proposals, memories: j.memory_suggestions };
   } catch (_) { return null; }
 }
 
@@ -200,7 +235,7 @@ export function buildContext(opts: { today: string; items: Item[]; memories: { c
   return parts.join("\n");
 }
 
-export function buildSystemPrompt(opts: { today: string; tz: string; name: string; plan: "free" | "premium" }): string {
+export function buildSystemPrompt(opts: { today: string; tz: string; name: string; plan: "free" | "premium"; suggestMemories?: boolean }): string {
   const { today, tz, name, plan } = opts;
   const wd = weekdayName(today);
   return `You are DAYMATE, a calm, practical personal assistant inside a planner app. You help ${name || "the person"} organise their days. Write in friendly British English, briefly.
@@ -237,7 +272,11 @@ WHAT YOU CAN DO
 ${plan === "premium"
     ? "- This person has Premium: also suggest sensible times for tasks, use the remembered notes to make suggestions that fit their routines, and give short personalised insights. Never mention remembered notes that look private or sensitive unless directly relevant."
     : "- Keep suggestions simple. (Smarter scheduling and personalised suggestions are part of Premium; only mention that if they ask for it.)"}
-- Do not give medical, legal or financial advice. Keep replies under about 120 words unless a summary needs more.`;
+${opts.suggestMemories ? `
+MEMORY SUGGESTIONS (Premium)
+- If the person states a lasting, non-sensitive fact that would help you help them later (a routine, household information, a preference, an important date such as a birthday), add at most 2 short items to "memory_suggestions", each written as a standalone third-person fact, e.g. "Sam's school pickup is at 3:15pm". Pick the nearest category: personal_preferences, daily_routines, household, important_dates, goals, shopping_preferences, meal_preferences, ongoing_projects, conversation_info.
+- Never suggest anything about health, money, passwords or card details, religion, politics, sexuality, immigration or other sensitive matters. Never suggest a one-off event (that is a task or appointment). Never suggest something you guessed or inferred: only what they clearly said. The person must approve every suggestion, so don't mention memory in your reply unless they ask. Use [] when there is nothing.
+` : ""}- Do not give medical, legal or financial advice. Keep replies under about 120 words unless a summary needs more.`;
 }
 
 export function clampHistory(msgs: { role: string; content: string }[], max = 12): { role: "user" | "assistant"; content: string }[] {
@@ -274,4 +313,19 @@ export const RESPONSE_SCHEMA = {
     },
   },
   required: ["reply", "proposals"],
+};
+// Only sent to the model for Premium people who switched memory suggestions on.
+export const RESPONSE_SCHEMA_WITH_MEMORY = {
+  ...RESPONSE_SCHEMA,
+  properties: {
+    ...RESPONSE_SCHEMA.properties,
+    memory_suggestions: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: { category: { type: "STRING", enum: [...MEMORY_KEYS] }, content: { type: "STRING" } },
+        required: ["category", "content"],
+      },
+    },
+  },
 };

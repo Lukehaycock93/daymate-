@@ -156,5 +156,16 @@ globalThis.fetch = realFetch;
   t('default op is add (old-style proposals still work)', L.sanitizeProposals([{ kind: 'task', title: 'x', date: '2026-11-25' }], TODAY)[0].op === 'add');
   t('system prompt explains refs and delete confirmation', /ref/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free' })) && /confirm/i.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free' })));
   t('schema allows ops + shopping items', L.RESPONSE_SCHEMA.properties.proposals.items.properties.op.enum.includes('delete') && !!L.RESPONSE_SCHEMA.properties.proposals.items.properties.items);
+  // --- memory suggestions (approve-before-save) ---
+  const M = L.sanitizeMemorySuggestions;
+  const ms = M([{ category: 'daily_routines', content: "Sam's school pickup is at 3:15pm" }, { category: 'bogus', content: 'Prefers oat milk in coffee' }, { category: 'household', content: 'A third one here' }], []);
+  t('memory: max 2, unknown category -> conversation_info', ms.length === 2 && ms[1].category === 'conversation_info');
+  t('memory: sensitive topics never suggested', M([{ category: 'goals', content: 'Takes medication for anxiety every morning' }, { category: 'goals', content: 'Their password is hunter2 ok' }, { category: 'goals', content: 'Votes for a political party' }], []).length === 0);
+  t('memory: duplicates of kept memories skipped', M([{ category: 'goals', content: "Sam's school pickup is at 3:15pm." }], ["Sam's school pickup is at 3:15pm"]).length === 0);
+  t('memory: too short / junk ignored', M([{ category: 'goals', content: 'hi' }, null, 5, {}], []).length === 0 && M('x', []).length === 0);
+  t('memory: content clipped to 300', M([{ category: 'goals', content: 'a'.repeat(900) }], [])[0].content.length <= 300);
+  t('memory prompt only when enabled', /MEMORY SUGGESTIONS/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'premium', suggestMemories: true })) && !/MEMORY SUGGESTIONS/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free' })));
+  t('base schema has no memory field; memory schema does', !L.RESPONSE_SCHEMA.properties.memory_suggestions && !!L.RESPONSE_SCHEMA_WITH_MEMORY.properties.memory_suggestions);
+  t('parseModelJson passes memory suggestions through', L.parseModelJson('{"reply":"ok","proposals":[],"memory_suggestions":[{"category":"goals","content":"x"}]}').memories.length === 1);
 }
 console.log(bad ? `${bad} of ${n} FAILED` : `${n}/${n} passed`); process.exit(bad ? 1 : 0);

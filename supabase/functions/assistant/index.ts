@@ -5,7 +5,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getProvider, ProviderError } from "./providers.ts";
 import {
-  assignRefs, buildContext, buildSystemPrompt, clampHistory, markConflicts, parseModelJson, PLAN_LIMITS, sanitizeProposals, todayIn, type Item,
+  assignRefs, buildContext, buildSystemPrompt, clampHistory, markConflicts, parseModelJson, PLAN_LIMITS, sanitizeMemorySuggestions, sanitizeProposals, todayIn, type Item,
 } from "./logic.ts";
 
 const cors = {
@@ -41,12 +41,14 @@ Deno.serve(async (req) => {
 
   // Consent, profile and plan — all read on the server.
   const [{ data: prefs }, { data: profile }, { data: prem }] = await Promise.all([
-    db.from("user_preferences").select("ai_consent_at").eq("user_id", userId).maybeSingle(),
+    db.from("user_preferences").select("ai_consent_at, memory_collection_paused").eq("user_id", userId).maybeSingle(),
     db.from("profiles").select("display_name, timezone").eq("id", userId).maybeSingle(),
     db.rpc("is_premium", { p_user: userId }),
   ]);
   if (!prefs?.ai_consent_at) return json({ error: "consent_required" }, 403);
   const plan: "free" | "premium" = prem === true ? "premium" : "free";
+  // Memory suggestions: Premium only, and only when the person has switched collection on (never while paused).
+  const suggestMemories = plan === "premium" && prefs.memory_collection_paused === false;
   const tz = profile?.timezone || "Europe/London";
   const today = todayIn(tz);
 
@@ -92,13 +94,13 @@ Deno.serve(async (req) => {
   const shopping = (shop.data ?? []).map((x) => ({ id: x.id as string, name: x.name as string, checked: !!x.checked }));
   const refs = assignRefs(items, shopping);
   const context = buildContext({ today, items, memories: mems.data ?? [], plan, shopping });
-  const system = buildSystemPrompt({ today, tz, name: (profile?.display_name || "").slice(0, 30), plan });
+  const system = buildSystemPrompt({ today, tz, name: (profile?.display_name || "").slice(0, 30), plan, suggestMemories });
   const messages = [...history, { role: "user" as const, content: `<planner_data>\n${context}\n</planner_data>\n\nPerson says: ${message}` }];
 
   // Ask the model (one retry for temporary failures)
   let text = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    try { text = await provider.complete({ system, messages, signal: AbortSignal.timeout(25000) }); break; }
+    try { text = await provider.complete({ system, messages, signal: AbortSignal.timeout(25000), withMemory: suggestMemories }); break; }
     catch (e) {
       const pe = e as ProviderError;
       console.error("provider error", provider.name, pe.status, String(pe.message).slice(0, 120));
@@ -118,6 +120,21 @@ Deno.serve(async (req) => {
     items.filter((i) => i.kind === "appointment" && !i.done && i.time).map((i) => ({ date: i.date, time: i.time, title: i.label })),
   ) : [];
 
+  // Suggestions wait for approval in memory_candidates; nothing becomes a memory until the person taps Save.
+  let memorySuggestions: { id: string; category: string; content: string }[] = [];
+  if (suggestMemories && parsed) {
+    const [{ data: kept }, { data: pend }] = await Promise.all([
+      db.from("memories").select("content").eq("user_id", userId).is("deleted_at", null).limit(100),
+      db.from("memory_candidates").select("content").eq("user_id", userId).in("status", ["pending", "rejected"]).limit(100),
+    ]);
+    const fresh = sanitizeMemorySuggestions(parsed.memories, [...(kept ?? []), ...(pend ?? [])].map((r) => r.content as string));
+    if (fresh.length && (pend ?? []).filter(() => true).length < 100) {
+      const rows = fresh.map((m) => ({ user_id: userId, id: crypto.randomUUID(), category: m.category, content: m.content, status: "pending" }));
+      const { error: mErr } = await db.from("memory_candidates").insert(rows);
+      if (mErr) console.error("memory candidates", mErr.code); else memorySuggestions = rows.map((r) => ({ id: r.id, category: r.category, content: r.content }));
+    }
+  }
+
   const now = Date.now();
   const messageId = crypto.randomUUID();
   // Every row carries the same keys (a bulk insert with differing keys would null out the missing ones).
@@ -128,5 +145,5 @@ Deno.serve(async (req) => {
   if (saveErr) console.error("could not save chat", saveErr.code, saveErr.message);
   await db.from("ai_conversations").update({ updated_at: new Date().toISOString() }).eq("user_id", userId).eq("id", conversationId);
 
-  return json({ conversationId, messageId, reply, proposals, plan, used: b.used, limit: lim.daily, today });
+  return json({ conversationId, messageId, reply, proposals, memorySuggestions, plan, used: b.used, limit: lim.daily, today });
 });

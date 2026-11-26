@@ -81,7 +81,7 @@ export function initMemory(DM) {
           </div>
           <label class="switch">
             <span class="switch__text"><strong>Pause automatic memory collection</strong>
-              <small>${paused ? 'Paused.' : 'Not paused.'} Automatic collection isn’t available yet because no AI is connected, so DAYMATE only remembers what you add yourself. This choice is saved for when it arrives.</small></span>
+              <small>${paused ? 'Paused.' : 'Not paused.'} When it’s not paused, Premium members get “Remember this?” suggestions in Daymate AI chats. Nothing is saved until you tap Save, and you can delete any memory here.</small></span>
             <input type="checkbox" class="switch__input" data-memory-pause ${paused ? 'checked' : ''} aria-label="Pause automatic memory collection">
             <i class="switch__ui" aria-hidden="true"></i>
           </label>
@@ -102,7 +102,7 @@ export function initMemory(DM) {
 
         <h3 class="group-title">With Premium</h3>
         <ul class="features">
-          <li><button type="button" class="feature feature--premium" data-action="open-premium" data-feature="ai-memory"><span class="feature__icon">${icon('sparkles')}</span><span class="feature__text"><strong>AI-powered memory</strong><small>Suggest memories for your approval and find the right one when you ask. Not available yet.</small></span><span class="feature__side"><span class="badge badge--premium">${icon('lock')}Premium · Soon</span></span></button></li>
+          <li><button type="button" class="feature feature--premium" data-action="open-premium" data-feature="ai-memory"><span class="feature__icon">${icon('sparkles')}</span><span class="feature__text"><strong>AI-powered memory</strong><small>Daymate AI suggests memories for your approval and uses them in its answers.</small></span><span class="feature__side"><span class="badge badge--premium">${icon('lock')}Premium</span></span></button></li>
         </ul>
         <p class="fine">Memories are private to your account. DAYMATE never collects sensitive details on its own. Anything you mark as sensitive stays hidden until you tap it.</p>
       </div>`;
@@ -117,7 +117,7 @@ export function initMemory(DM) {
       });
     }
     const pause = $('[data-memory-pause]', host);
-    if (pause) pause.addEventListener('change', () => { Store.setSettings({ memoryPaused: pause.checked }); UI.toast(pause.checked ? 'Automatic collection paused' : 'Saved. Nothing is collected automatically yet.'); });
+    if (pause) pause.addEventListener('change', () => { Store.setSettings({ memoryPaused: pause.checked }); UI.toast(pause.checked ? 'Automatic collection paused' : 'On. Daymate AI may suggest memories. You approve each one.'); });
   }
 
   /* ---- add / edit sheet ---- */

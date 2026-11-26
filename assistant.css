@@ -168,3 +168,6 @@ body.ai-open .toasts { bottom: auto; top: calc(var(--safe-t) + 16px); }
 .shopmini__empty { margin: 0; font-size: 14.5px; color: var(--muted); }
 :root[data-theme="light"] .askbar__icon { color: #fff; }
 @media (max-width: 380px) { .askbar__text small { display: none; } }
+
+/* "Remember this?" cards (AI memory suggestions) */
+.ai-mem__text { margin: 6px 0 10px; font-size: 0.95rem; line-height: 1.4; color: var(--text); }

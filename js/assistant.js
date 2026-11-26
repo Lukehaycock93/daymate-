@@ -38,7 +38,7 @@ export function initAssistant(DM) {
   const { Store, Account, UI, confirmDialog, CATEGORIES, PRIORITY_LABEL } = DM;
   const { $, esc, icon, plural, todayStr, parseDate, isValidDate, isValidTime, cleanText, safeLS, nowISO } = helpers(DM);
   const ui = {
-    mode: 'loading', consent: null, convId: '', messages: [], busy: false, history: null, showHistory: false, skipped: new Set(),
+    mode: 'loading', consent: null, convId: '', messages: [], busy: false, history: null, showHistory: false, skipped: new Set(), memDone: new Set(),
     userId: '', used: null, limit: null, plan: 'free', error: '', draft: '', stick: true, undo: {}, sheetOpen: false,
   };
   const catLabel = (k) => (CATEGORIES.find((c) => c.key === k) || CATEGORIES[0]).label;
@@ -94,7 +94,7 @@ export function initAssistant(DM) {
         else ui.error = ERR[j.error] || (navigator.onLine ? 'Something went wrong. Please try again.' : 'You’re offline. Reconnect and try again.');
       } else {
         ui.convId = data.conversationId; ui.used = data.used; ui.limit = data.limit; ui.plan = data.plan;
-        const msg = { id: data.messageId, role: 'assistant', content: data.reply, proposals: data.proposals && data.proposals.length ? data.proposals : null };
+        const msg = { id: data.messageId, role: 'assistant', content: data.reply, proposals: data.proposals && data.proposals.length ? data.proposals : null, memories: Array.isArray(data.memorySuggestions) && data.memorySuggestions.length ? data.memorySuggestions : null };
         ui.messages.push(msg);
         autoApply(msg);
       }
@@ -287,6 +287,27 @@ export function initAssistant(DM) {
         ${status}
       </li>`;
   }
+  /** "Remember this?" — nothing is saved until the person taps Save. */
+  function memoryCards(m) {
+    const list = (m.memories || []).filter((x) => !ui.memDone.has(x.id));
+    if (!list.length) return '';
+    return `<ul class="ai-props ai-mems">${list.map((x) => `
+      <li class="ai-prop ai-mem" data-mem="${esc(x.id)}" data-msg="${esc(m.id)}">
+        <div class="ai-prop__head"><span class="pl-sub">${icon('sparkles')} Remember this?</span></div>
+        <p class="ai-mem__text">${esc(x.content)}</p>
+        <div class="ai-prop__btns"><button type="button" class="btn btn--primary btn--sm" data-action="ai-mem-save">Save</button><button type="button" class="btn btn--ghost btn--sm" data-action="ai-mem-no">No thanks</button></div>
+      </li>`).join('')}</ul>`;
+  }
+  async function resolveMemory(el, save) {
+    const li = el.closest('[data-mem]'); if (!li) return;
+    const id = li.dataset.mem;
+    const m = ui.messages.find((x) => x.id === li.dataset.msg); const x = m && (m.memories || []).find((y) => y.id === id);
+    if (!x) return;
+    ui.memDone.add(id);
+    if (save) { Store.add('memories', { category: x.category, title: '', content: x.content, source: 'ai', sensitive: false }); say('Saved to Memory'); }
+    DM.views.renderAll();
+    try { await session.client.from('memory_candidates').update({ status: save ? 'approved' : 'rejected' }).eq('id', id); } catch (_) { /* the candidate stays pending; harmless */ }
+  }
   function bubble(m) {
     const props = m.proposals || [];
     const pending = props.filter((p, i) => opOf(p) !== 'delete' && !p.needs_clarification && !p.ask_date && !isDone(m.id, i) && !ui.skipped.has(key(m.id, i)));
@@ -295,6 +316,7 @@ export function initAssistant(DM) {
         <div class="ai-bubble">${nl(m.content)}</div>
         ${props.length ? `<ul class="ai-props">${props.map((p, i) => proposalCard(m.id, p, i)).join('')}</ul>
           ${pending.length > 1 ? `<button type="button" class="link-btn" data-action="ai-add-all" data-msg="${esc(m.id)}">Apply all ${pending.length}</button>` : ''}` : ''}
+        ${memoryCards(m)}
       </li>`;
   }
 
@@ -323,7 +345,7 @@ export function initAssistant(DM) {
   /** Draws the chat into `host` (the full-screen view or the floating sheet — only one is ever filled at a time). */
   function render(host) {
     const uid = session.user ? session.user.id : '';
-    if (ui.userId !== uid) { Object.assign(ui, { userId: uid, mode: 'loading', consent: null, convId: '', messages: [], history: null, showHistory: false, error: '', draft: '', used: null, limit: null, skipped: new Set(), busy: false, undo: {} }); }
+    if (ui.userId !== uid) { Object.assign(ui, { userId: uid, mode: 'loading', consent: null, convId: '', messages: [], history: null, showHistory: false, error: '', draft: '', used: null, limit: null, skipped: new Set(), memDone: new Set(), busy: false, undo: {} }); }
     const prev = $('#aiInput', host); if (prev && !ui.keepDraft) ui.draft = prev.value; ui.keepDraft = false;
     const hadFocus = !!prev && document.activeElement === prev;
     const list = $('#aiMsgs', host); const nearBottom = list ? list.scrollHeight - list.scrollTop - list.clientHeight < 120 : true;
@@ -470,6 +492,8 @@ export function initAssistant(DM) {
       const s = STARTERS[Number(el.dataset.n)]; if (!s) return;
       if (s.fill) { ui.draft = s.fill; ui.keepDraft = true; ui.focusInput = true; DM.views.renderAll(); } else send(s.text);
     },
+    'ai-mem-save': (el) => resolveMemory(el, true),
+    'ai-mem-no': (el) => resolveMemory(el, false),
     'ai-skip': (el) => { const c = ctx(el); if (c) { ui.skipped.add(key(c.msg, c.i)); DM.views.renderAll(); } },
     'ai-undo': (el) => { const c = ctx(el); if (c) { undoOne(c.msg, c.i); say('Undone'); DM.views.renderAll(); } },
     'ai-add': (el) => {

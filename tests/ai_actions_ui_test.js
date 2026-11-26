@@ -158,6 +158,17 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
   await ask(page, 'haircut next week');
   ok('no date: asked, not added', !(await state(page, 'reminders')).some((r) => r.title === 'Haircut') && !!(await page.$('.ai-msg:last-child .ai-prop__date')));
 
+  // 7b) memory suggestions: nothing saved until Save; No thanks saves nothing
+  const memsBefore = (await state(page, 'memories')).length;
+  await reply(page, { reply: 'Noted, I’ll keep school pickup in mind.', memorySuggestions: [{ id: 'mc1', category: 'daily_routines', content: 'School pickup is at 3:15pm' }, { id: 'mc2', category: 'household', content: 'Has a dog called Biscuit' }] });
+  await ask(page, 'School pickup is 3:15 and we have a dog called Biscuit');
+  ok('suggestions shown, nothing saved yet', (await page.$$('.ai-msg:last-child .ai-mem')).length === 2 && (await state(page, 'memories')).length === memsBefore);
+  await page.click('.ai-msg:last-child .ai-mem[data-mem="mc1"] [data-action="ai-mem-save"]'); await page.waitForTimeout(200);
+  const mems = await state(page, 'memories');
+  ok('Save stores an ai memory', mems.length === memsBefore + 1 && mems.some((m) => m.content === 'School pickup is at 3:15pm' && m.source === 'ai' && m.category === 'daily_routines' && !m.sensitive));
+  await page.click('.ai-msg:last-child .ai-mem[data-mem="mc2"] [data-action="ai-mem-no"]'); await page.waitForTimeout(200);
+  ok('No thanks saves nothing and hides the card', (await state(page, 'memories')).length === memsBefore + 1 && !(await page.$('.ai-msg:last-child .ai-mem')));
+
   // 8) keyboard: the panel follows the visual viewport (mobile keyboard)
   await page.evaluate(() => { const p = document.querySelector('.ai-sheet__panel'); p.style.setProperty('--vvh', '420px'); });
   const kb = await page.locator('.ai-form').boundingBox();

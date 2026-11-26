@@ -33,7 +33,7 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.6.0',
+    version: '0.7.0',
     stage: 3,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
