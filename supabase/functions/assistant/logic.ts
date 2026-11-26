@@ -42,6 +42,30 @@ export function sanitizeMemorySuggestions(raw: unknown, existing: string[] = [],
   return out;
 }
 
+const WMO: Record<number, string> = {
+  0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast", 45: "fog", 48: "freezing fog",
+  51: "light drizzle", 53: "drizzle", 55: "heavy drizzle", 56: "freezing drizzle", 57: "freezing drizzle",
+  61: "light rain", 63: "rain", 65: "heavy rain", 66: "freezing rain", 67: "freezing rain",
+  71: "light snow", 73: "snow", 75: "heavy snow", 77: "snow grains", 80: "light showers", 81: "showers", 82: "heavy showers",
+  85: "snow showers", 86: "heavy snow showers", 95: "thunderstorm", 96: "thunderstorm with hail", 99: "thunderstorm with hail",
+};
+export type DailyWeather = { time?: unknown[]; weather_code?: unknown[]; temperature_2m_max?: unknown[]; temperature_2m_min?: unknown[]; precipitation_probability_max?: unknown[]; wind_speed_10m_max?: unknown[] };
+const num = (v: unknown) => (typeof v === "number" && isFinite(v) ? Math.round(v) : null);
+/** Turn an Open-Meteo daily forecast into compact text lines for the model. Returns "" if the data is unusable. */
+export function formatWeather(place: string, d: DailyWeather | null | undefined): string {
+  if (!d || !Array.isArray(d.time)) return "";
+  const lines: string[] = [];
+  for (let i = 0; i < Math.min(d.time.length, 14); i++) {
+    const day = d.time[i];
+    if (!isRealDate(day)) continue;
+    const hi = num(d.temperature_2m_max?.[i]), lo = num(d.temperature_2m_min?.[i]);
+    if (hi === null || lo === null) continue;
+    const code = num(d.weather_code?.[i]); const rain = num(d.precipitation_probability_max?.[i]); const wind = num(d.wind_speed_10m_max?.[i]);
+    lines.push(`${day} ${weekdayName(day).slice(0, 3)}: ${code !== null && WMO[code] ? WMO[code] : "mixed"}, ${lo}\u2013${hi}\u00b0C${rain !== null ? `, ${rain}% chance of rain` : ""}${wind !== null ? `, wind up to ${Math.round(wind * 0.621)} mph` : ""}`);
+  }
+  return lines.length ? `WEATHER FORECAST for ${clip(place, 60)} (daily):\n${lines.join("\n")}` : "";
+}
+
 /** Free vs Premium. The plan itself comes from the server-side entitlements table. */
 export const PLAN_LIMITS = {
   free: { daily: 10, horizonDays: 7, useMemory: false, maxContextItems: 40 },
@@ -216,7 +240,7 @@ export function assignRefs(items: Item[], shopping: ShopItem[] = []): RefMap {
   return map;
 }
 
-export function buildContext(opts: { today: string; items: Item[]; memories: { category: string; content: string }[]; plan: "free" | "premium"; shopping?: ShopItem[] }): string {
+export function buildContext(opts: { today: string; items: Item[]; memories: { category: string; content: string }[]; plan: "free" | "premium"; shopping?: ShopItem[]; weather?: string }): string {
   const lim = PLAN_LIMITS[opts.plan];
   const open = opts.items.filter((i) => !i.done);
   const overdue = open.filter((i) => i.date < opts.today).sort((a, b) => a.date.localeCompare(b.date));
@@ -231,11 +255,12 @@ export function buildContext(opts: { today: string; items: Item[]; memories: { c
   const shop = opts.shopping ?? [];
   const toBuy = shop.filter((x) => !x.checked);
   parts.push(`SHOPPING LIST (${toBuy.length} to buy, ${shop.length - toBuy.length} ticked off):`, ...toBuy.slice(0, 60).map((x) => `{${x.ref ?? "-"}} ${clip(x.name, 60)}`));
+  if (opts.weather) parts.push(opts.weather);
   if (lim.useMemory && opts.memories.length) parts.push("THINGS THE PERSON ASKED DAYMATE TO REMEMBER:", ...opts.memories.slice(0, 40).map((m) => `- (${m.category}) ${clip(m.content, 300)}`));
   return parts.join("\n");
 }
 
-export function buildSystemPrompt(opts: { today: string; tz: string; name: string; plan: "free" | "premium"; suggestMemories?: boolean }): string {
+export function buildSystemPrompt(opts: { today: string; tz: string; name: string; plan: "free" | "premium"; suggestMemories?: boolean; hasWeather?: boolean }): string {
   const { today, tz, name, plan } = opts;
   const wd = weekdayName(today);
   return `You are DAYMATE, a calm, practical personal assistant inside a planner app. You help ${name || "the person"} organise their days. Write in friendly British English, briefly.
@@ -257,6 +282,7 @@ ACTIONS ("proposals" array, each with an "op")
 - "Remind me to buy milk when I go shopping" and "add X to my shopping list" mean a shopping add, not a dated reminder.
 - Do not add something that is already on the list or in the planner.
 - "Plan my day": answer in the reply with a sensible order and times around their appointments (don't change anything unless they ask you to put those times in).
+- Weather: ${opts.hasWeather ? "use ONLY the WEATHER FORECAST in the planner data (it covers the person's home town; say so if they ask about it). For an appointment, check the forecast for that date. If the date is outside the forecast, say you can't see that far ahead. Never invent weather. Temperatures are in °C." : "you have no weather data for this person. If they ask about weather, say you can't see it yet and that they can set their home town in Settings so you can."}
 - "Am I free…?": check the appointments and timed items for that period and answer plainly; do not add anything.
 
 DATES (very important)

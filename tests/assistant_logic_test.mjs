@@ -167,5 +167,11 @@ globalThis.fetch = realFetch;
   t('memory prompt only when enabled', /MEMORY SUGGESTIONS/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'premium', suggestMemories: true })) && !/MEMORY SUGGESTIONS/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free' })));
   t('base schema has no memory field; memory schema does', !L.RESPONSE_SCHEMA.properties.memory_suggestions && !!L.RESPONSE_SCHEMA_WITH_MEMORY.properties.memory_suggestions);
   t('parseModelJson passes memory suggestions through', L.parseModelJson('{"reply":"ok","proposals":[],"memory_suggestions":[{"category":"goals","content":"x"}]}').memories.length === 1);
+  // --- weather ---
+  const wx = L.formatWeather('Leeds', { time: ['2026-11-27', '2026-11-28', 'bad'], weather_code: [61, 3, 0], temperature_2m_max: [9.4, 7, 5], temperature_2m_min: [4.2, 3, 1], precipitation_probability_max: [80, 20, null], wind_speed_10m_max: [30, 10, 5] });
+  t('weather: readable lines with rain, temps, mph', /WEATHER FORECAST for Leeds/.test(wx) && /2026-11-27 Fri: light rain, 4\u20139\u00b0C, 80% chance of rain, wind up to 19 mph/.test(wx));
+  t('weather: bad days skipped, junk -> empty', wx.split('\n').length === 3 && L.formatWeather('x', null) === '' && L.formatWeather('x', { time: ['nope'] }) === '' && L.formatWeather('x', {}) === '');
+  t('weather appears in context only when given', L.buildContext({ today: TODAY, items: [], memories: [], plan: 'free', weather: wx }).includes('WEATHER FORECAST') && !L.buildContext({ today: TODAY, items: [], memories: [], plan: 'free' }).includes('WEATHER'));
+  t('prompt: weather rule changes with data', /ONLY the WEATHER FORECAST/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free', hasWeather: true })) && /set their home town in Settings/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free' })));
 }
 console.log(bad ? `${bad} of ${n} FAILED` : `${n}/${n} passed`); process.exit(bad ? 1 : 0);

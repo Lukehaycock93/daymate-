@@ -169,6 +169,30 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
   await page.click('.ai-msg:last-child .ai-mem[data-mem="mc2"] [data-action="ai-mem-no"]'); await page.waitForTimeout(200);
   ok('No thanks saves nothing and hides the card', (await state(page, 'memories')).length === memsBefore + 1 && !(await page.$('.ai-msg:last-child .ai-mem')));
 
+  // 7c) home town for weather (Settings): search, pick, save, clear
+  await page.evaluate(() => { window.__upd = []; const st = window.__stubFrom; });
+  await page.evaluate(async () => {
+    const { session } = await import('./js/session.js'); const orig = session.client.from;
+    session.client.from = (t) => { const b = orig(t); const u = b.update; b.update = (v) => { if (t === 'user_preferences') window.__upd.push(v); return u.call(b, v); }; return b; };
+    window.__realFetch = window.fetch;
+    window.fetch = async (url, o) => /geocoding-api/.test(String(url)) ? new Response(JSON.stringify({ results: [{ name: 'Leeds', admin1: 'England', country: 'United Kingdom', latitude: 53.7965, longitude: -1.5478 }] })) : window.__realFetch(url, o);
+  });
+  await page.keyboard.press('Escape'); await page.waitForTimeout(450);
+  await page.evaluate(() => document.querySelector('[data-action="open-settings"]').click()); await page.waitForTimeout(500);
+  ok('settings has a home town field', !!(await page.$('#homeInput')));
+  await page.fill('#homeInput', 'Leeds'); await page.click('[data-action="home-search"]'); await page.waitForTimeout(400);
+  ok('search shows the town to pick', /Leeds/.test(await page.textContent('#homeField')) && !!(await page.$('[data-action="home-pick"]')));
+  await page.click('[data-action="home-pick"]'); await page.waitForTimeout(300);
+  const saved = await page.evaluate(() => window.__upd[window.__upd.length - 1]);
+  ok('pick saves name + rounded coordinates only', saved && saved.home_name === 'Leeds, England' && saved.home_lat === 53.8 && saved.home_lon === -1.55, JSON.stringify(saved));
+  await page.click('[data-action="home-clear"]'); await page.waitForTimeout(300);
+  const cleared = await page.evaluate(() => window.__upd[window.__upd.length - 1]);
+  ok('remove clears the saved town', cleared && cleared.home_name === null && cleared.home_lat === null);
+  await page.evaluate(() => { document.querySelector('.modal.is-open [data-close], .modal.is-open .modal__close') && document.querySelector('.modal.is-open [data-close], .modal.is-open .modal__close').click(); });
+  await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+  await page.evaluate(() => { window.fetch = window.__realFetch; });
+  if (await page.evaluate(() => document.getElementById('aiSheet').hidden)) { await page.tap('#aiFab'); await page.waitForTimeout(450); }
+
   // 8) keyboard: the panel follows the visual viewport (mobile keyboard)
   await page.evaluate(() => { const p = document.querySelector('.ai-sheet__panel'); p.style.setProperty('--vvh', '420px'); });
   const kb = await page.locator('.ai-form').boundingBox();
