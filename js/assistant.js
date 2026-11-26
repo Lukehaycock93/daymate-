@@ -515,6 +515,53 @@ export function initAssistant(DM) {
     'ai-sheet-close': () => closeSheet(),
     'open-ai': () => openSheet(),
   });
+
+  /* ---- Home town for weather answers (Settings) ---- */
+  const home = { name: '', results: null, busy: false, msg: '' };
+  async function loadHome() {
+    if (!Account.configured || !session.user) { home.name = ''; return; }
+    try {
+      const { data } = await session.client.from('user_preferences').select('home_name').eq('user_id', session.user.id).maybeSingle();
+      home.name = (data && data.home_name) || '';
+    } catch (_) { /* leave as is */ }
+  }
+  function homeField() {
+    const about = document.getElementById('settingsAbout'); if (!about) return;
+    let box = document.getElementById('homeField');
+    if (!Account.configured || !session.user) { if (box) box.remove(); return; }
+    if (!box) { box = document.createElement('div'); box.className = 'field'; box.id = 'homeField'; about.parentNode.insertBefore(box, about); }
+    box.innerHTML = `
+      <label class="field__label" for="homeInput">Home town (for weather in Daymate AI)</label>
+      <div class="ai-home"><input class="input" id="homeInput" type="text" maxlength="60" placeholder="e.g. Leeds" autocomplete="off" enterkeyhint="search" value="">
+        <button type="button" class="btn btn--ghost btn--sm" data-action="home-search">Find</button></div>
+      <p class="fine" id="homeMsg">${esc(home.msg || (home.name ? `Saved: ${home.name}. Only the town name and its map position are stored.` : 'Not set. Only the town name and its map position are stored.'))}</p>
+      ${home.results ? `<ul class="ai-home__list">${home.results.map((r, i) => `<li><button type="button" class="row" data-action="home-pick" data-i="${i}"><span class="row__text"><strong>${esc(r.name)}</strong><small>${esc(r.sub)}</small></span></button></li>`).join('')}</ul>` : ''}
+      ${home.name ? '<button type="button" class="link-btn" data-action="home-clear">Remove my home town</button>' : ''}`;
+  }
+  async function homeSearch() {
+    const q = (document.getElementById('homeInput') || {}).value || '';
+    if (q.trim().length < 2 || home.busy) return;
+    home.busy = true; home.msg = 'Searching…'; home.results = null; homeField();
+    try {
+      const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q.trim())}&count=5&language=en&format=json`);
+      const j = await r.json();
+      home.results = (j.results || []).map((x) => ({ name: x.name, sub: [x.admin1, x.country].filter(Boolean).join(', '), lat: Math.round(x.latitude * 100) / 100, lon: Math.round(x.longitude * 100) / 100 }));
+      home.msg = home.results.length ? 'Pick your town:' : 'No town found. Try another spelling.';
+    } catch (_) { home.msg = navigator.onLine ? 'Couldn’t search just now. Try again.' : 'You’re offline.'; }
+    home.busy = false; homeField();
+  }
+  async function homeSave(vals) {
+    const { error } = await session.client.from('user_preferences').update(vals).eq('user_id', session.user.id);
+    if (error) { home.msg = 'Couldn’t save that. Try again.'; homeField(); return; }
+    home.name = vals.home_name || ''; home.results = null; home.msg = ''; homeField();
+    UI.toast(vals.home_name ? 'Home town saved' : 'Home town removed');
+  }
+  DM.registerActions({
+    'home-search': () => homeSearch(),
+    'home-pick': (el) => { const r = home.results && home.results[Number(el.dataset.i)]; if (r) homeSave({ home_name: [r.name, r.sub.split(', ')[0]].filter((v, i, a) => v && a.indexOf(v) === i).join(', ').slice(0, 80), home_lat: r.lat, home_lon: r.lon }); },
+    'home-clear': () => homeSave({ home_name: null, home_lat: null, home_lon: null }),
+  });
+  DM.onSettingsOpen(async () => { home.results = null; home.msg = ''; homeField(); await loadHome(); homeField(); });
   DM.registerRoute('assistant', { render });
   DM.onRender(() => { syncFab(); if (ui.sheetOpen) renderSheet(); });
   syncFab();

@@ -5,7 +5,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getProvider, ProviderError } from "./providers.ts";
 import {
-  assignRefs, buildContext, buildSystemPrompt, clampHistory, markConflicts, parseModelJson, PLAN_LIMITS, sanitizeMemorySuggestions, sanitizeProposals, todayIn, type Item,
+  assignRefs, buildContext, buildSystemPrompt, clampHistory, formatWeather, markConflicts, parseModelJson, PLAN_LIMITS, sanitizeMemorySuggestions, sanitizeProposals, todayIn, type Item,
 } from "./logic.ts";
 
 const cors = {
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
 
   // Consent, profile and plan — all read on the server.
   const [{ data: prefs }, { data: profile }, { data: prem }] = await Promise.all([
-    db.from("user_preferences").select("ai_consent_at, memory_collection_paused").eq("user_id", userId).maybeSingle(),
+    db.from("user_preferences").select("ai_consent_at, memory_collection_paused, home_name, home_lat, home_lon").eq("user_id", userId).maybeSingle(),
     db.from("profiles").select("display_name, timezone").eq("id", userId).maybeSingle(),
     db.rpc("is_premium", { p_user: userId }),
   ]);
@@ -93,8 +93,20 @@ Deno.serve(async (req) => {
   ];
   const shopping = (shop.data ?? []).map((x) => ({ id: x.id as string, name: x.name as string, checked: !!x.checked }));
   const refs = assignRefs(items, shopping);
-  const context = buildContext({ today, items, memories: mems.data ?? [], plan, shopping });
-  const system = buildSystemPrompt({ today, tz, name: (profile?.display_name || "").slice(0, 30), plan, suggestMemories });
+  // Weather for their home town (free Open-Meteo service). Best effort: any failure just means no weather.
+  let weather = "";
+  if (typeof prefs.home_lat === "number" && typeof prefs.home_lon === "number") {
+    try {
+      const q = new URLSearchParams({
+        latitude: String(prefs.home_lat), longitude: String(prefs.home_lon), timezone: tz, forecast_days: "7",
+        daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max",
+      });
+      const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`, { signal: AbortSignal.timeout(4000) });
+      if (r.ok) weather = formatWeather(prefs.home_name || "their home town", (await r.json())?.daily);
+    } catch (_) { /* no weather this time */ }
+  }
+  const context = buildContext({ today, items, memories: mems.data ?? [], plan, shopping, weather });
+  const system = buildSystemPrompt({ today, tz, name: (profile?.display_name || "").slice(0, 30), plan, suggestMemories, hasWeather: !!weather });
   const messages = [...history, { role: "user" as const, content: `<planner_data>\n${context}\n</planner_data>\n\nPerson says: ${message}` }];
 
   // Ask the model (one retry for temporary failures)
