@@ -44,7 +44,7 @@ t('time dropped when date missing', L.sanitizeProposals([{ kind: 'event', title:
 // Garbage in
 t('non-array -> []', L.sanitizeProposals('hello', TODAY).length === 0 && L.sanitizeProposals(null, TODAY).length === 0);
 t('empty titles skipped', L.sanitizeProposals([{ title: '   ', date: '2026-11-25' }, 5, null], TODAY).length === 0);
-t('max 10 proposals', L.sanitizeProposals(Array.from({ length: 30 }, (_, i) => ({ title: 't' + i, date: '2026-11-25' })), TODAY).length === 10);
+t('max 12 proposals', L.sanitizeProposals(Array.from({ length: 30 }, (_, i) => ({ title: 't' + i, date: '2026-11-25' })), TODAY).length === 12);
 const evil = L.sanitizeProposals([{ kind: 'rm -rf', title: '<img src=x onerror=alert(1)>'.repeat(20), priority: 'critical', category: 'x', repeat: 'hourly', date: '2026-11-25', time: '99:99' }], TODAY)[0];
 t('unknown enums fall back safely', evil.kind === 'task' && evil.priority === 'medium' && evil.category === 'personal' && evil.repeat === '' && evil.time === null);
 t('titles are length-capped', evil.title.length <= 120);
@@ -83,7 +83,7 @@ t('premium: 30-day horizon + memories', /Far away/.test(prem) && /School run at 
 t('premium allowance bigger', L.PLAN_LIMITS.premium.daily > L.PLAN_LIMITS.free.daily);
 const sys = L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: 'Luke', plan: 'free' });
 t('prompt states today + weekday', /Tuesday 2026-11-24/.test(sys) && sys.includes('2026-11-25'));
-t('prompt forbids guessing + auto-creating', /Never guess a date/.test(sys) && /NEVER create anything/.test(sys));
+t('prompt forbids guessing; deletes need confirmation; never claims un-actioned work', /Never guess a date/.test(sys) && /deleting always needs/i.test(sys) && /Only say you did something if you included/.test(sys));
 t('prompt treats data as data', /never instructions/.test(sys));
 t('free prompt has no Premium-only powers', !/also suggest sensible times/.test(sys));
 t('history is clamped', L.clampHistory(Array.from({ length: 50 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', content: 'x'.repeat(5000) }))).length === 12);
@@ -119,4 +119,42 @@ try { await P.getProvider(env({ GEMINI_API_KEY: 'k' })).complete({ system: 's', 
 globalThis.fetch = async () => { throw new Error('offline'); };
 try { await P.getProvider(env({ GEMINI_API_KEY: 'k' })).complete({ system: 's', messages: [] }); t('network error throws', false); } catch (e) { t('network failure is retryable', e.retryable === true); }
 globalThis.fetch = realFetch;
+
+// ---- Actions: update / delete / complete / shopping, via references the server controls ----
+{
+  const items = [
+    { id: 'id-appt', tkind: 'event', kind: 'appointment', date: '2026-11-27', time: '14:00', label: 'Dentist', category: 'personal' },
+    { id: 'id-task', tkind: 'task', kind: 'task', date: '2026-11-25', time: '', label: 'Call the bank', category: 'personal', priority: 'medium' },
+    { id: 'id-bill', tkind: 'bill', kind: 'bill', date: '2026-11-30', time: '', label: 'Electricity', category: 'bills' },
+  ];
+  const shopping = [{ id: 'id-milk', name: 'Milk', checked: false }, { id: 'id-eggs', name: 'Eggs', checked: true }];
+  const refs = L.assignRefs(items, shopping);
+  t('refs: a1 is the dentist', refs.get('a1')?.id === 'id-appt' && refs.get('a1')?.kind === 'event');
+  t('refs: t1 task, b1 bill, s1 shopping', refs.get('t1')?.id === 'id-task' && refs.get('b1')?.kind === 'bill' && refs.get('s1')?.id === 'id-milk');
+  const ctx = L.buildContext({ today: TODAY, items, memories: [], plan: 'free', shopping });
+  t('context shows refs + shopping, never ids', ctx.includes('{a1}') && ctx.includes('{s1} Milk') && !ctx.includes('id-appt') && !ctx.includes('id-milk'));
+  t('ticked-off shopping not listed', !ctx.includes('Eggs') && ctx.includes('1 to buy'));
+
+  const mv = L.sanitizeProposals([{ op: 'update', kind: 'event', ref: 'a1', date: '2026-11-30' }], TODAY, refs)[0];
+  t('move appointment: target id resolved, only date changes', mv.op === 'update' && mv.target.id === 'id-appt' && mv.changes.date === '2026-11-30' && !('time' in mv.changes) && !mv.ask_date);
+  const past = L.sanitizeProposals([{ op: 'update', kind: 'event', ref: 'a1', date: '2026-11-01' }], TODAY, refs)[0];
+  t('move to a past date asks instead', past.ask_date === true && !past.changes.date && /which day/i.test(past.needs_clarification));
+  t('update with nothing to change is dropped', L.sanitizeProposals([{ op: 'update', kind: 'event', ref: 'a1', title: 'Dentist' }], TODAY, refs).length === 0);
+  t('invented ref is dropped (cannot reach unseen items)', L.sanitizeProposals([{ op: 'delete', kind: 'event', ref: 'a99' }, { op: 'delete', kind: 'event', ref: 'id-appt' }, { op: 'complete', ref: '' }], TODAY, refs).length === 0);
+  t('no refs given -> update/delete dropped', L.sanitizeProposals([{ op: 'delete', kind: 'task', ref: 't1' }], TODAY).length === 0);
+  const del = L.sanitizeProposals([{ op: 'delete', kind: 'task', ref: 'a1', title: 'ignored' }], TODAY, refs)[0];
+  t('delete takes the real kind/title from the server, not the model', del.op === 'delete' && del.kind === 'event' && del.title === 'Dentist' && del.target.id === 'id-appt');
+  const done = L.sanitizeProposals([{ op: 'complete', kind: 'task', ref: 't1' }, { op: 'complete', kind: 'shopping', ref: 's1' }], TODAY, refs);
+  t('complete task + tick shopping', done[0].target.id === 'id-task' && done[1].kind === 'shopping' && done[1].target.id === 'id-milk');
+  const sh = L.sanitizeProposals([{ op: 'add', kind: 'shopping', items: ['Bread', 'milk', 'Eggs', 'bread', '  '], title: 'Milk' }], TODAY, refs)[0];
+  t('shopping add: de-duplicated names, no date needed', sh.kind === 'shopping' && sh.items.join() === 'Bread,milk,Eggs' && sh.needs_clarification === null);
+  t('shopping capped at 30 and clipped', L.sanitizeProposals([{ op: 'add', kind: 'shopping', items: Array.from({ length: 50 }, (_, i) => 'item' + i + 'x'.repeat(100)) }], TODAY)[0].items.length === 30);
+  t('empty shopping add dropped', L.sanitizeProposals([{ op: 'add', kind: 'shopping', items: [] }], TODAY).length === 0);
+  const tm = L.sanitizeProposals([{ op: 'update', kind: 'task', ref: 't1', time: '16:30', priority: 'urgent', note: 'ignored for tasks' }], TODAY, refs)[0];
+  t('task update: time + priority kept, note not applied to tasks', tm.changes.time === '16:30' && tm.changes.priority === 'urgent' && !('note' in tm.changes));
+  t('bad time in update ignored', L.sanitizeProposals([{ op: 'update', kind: 'task', ref: 't1', time: '25:99' }], TODAY, refs).length === 0);
+  t('default op is add (old-style proposals still work)', L.sanitizeProposals([{ kind: 'task', title: 'x', date: '2026-11-25' }], TODAY)[0].op === 'add');
+  t('system prompt explains refs and delete confirmation', /ref/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free' })) && /confirm/i.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free' })));
+  t('schema allows ops + shopping items', L.RESPONSE_SCHEMA.properties.proposals.items.properties.op.enum.includes('delete') && !!L.RESPONSE_SCHEMA.properties.proposals.items.properties.items);
+}
 console.log(bad ? `${bad} of ${n} FAILED` : `${n}/${n} passed`); process.exit(bad ? 1 : 0);

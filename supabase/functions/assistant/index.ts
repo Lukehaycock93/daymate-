@@ -5,7 +5,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { getProvider, ProviderError } from "./providers.ts";
 import {
-  buildContext, buildSystemPrompt, clampHistory, markConflicts, parseModelJson, PLAN_LIMITS, sanitizeProposals, todayIn, type Item,
+  assignRefs, buildContext, buildSystemPrompt, clampHistory, markConflicts, parseModelJson, PLAN_LIMITS, sanitizeProposals, todayIn, type Item,
 } from "./logic.ts";
 
 const cors = {
@@ -74,21 +74,24 @@ Deno.serve(async (req) => {
   const lim = PLAN_LIMITS[plan];
   const from = new Date(Date.parse(today) - 14 * 86400000).toISOString().slice(0, 10);
   const to = new Date(Date.parse(today) + (lim.horizonDays + 1) * 86400000).toISOString().slice(0, 10);
-  const [tasks, appts, rems, mems] = await Promise.all([
-    db.from("tasks").select("title, due_date, due_time, completed, priority, category").eq("user_id", userId).is("deleted_at", null).gte("due_date", from).lte("due_date", to).limit(200),
-    db.from("appointments").select("title, appt_date, appt_time, done, category").eq("user_id", userId).is("deleted_at", null).gte("appt_date", from).lte("appt_date", to).limit(200),
-    db.from("reminders").select("title, remind_date, remind_time, done, category, category_tag").eq("user_id", userId).is("deleted_at", null).gte("remind_date", from).lte("remind_date", to).limit(200),
+  const [tasks, appts, rems, mems, shop] = await Promise.all([
+    db.from("tasks").select("id, title, due_date, due_time, completed, priority, category").eq("user_id", userId).is("deleted_at", null).gte("due_date", from).lte("due_date", to).limit(200),
+    db.from("appointments").select("id, title, appt_date, appt_time, done, category").eq("user_id", userId).is("deleted_at", null).gte("appt_date", from).lte("appt_date", to).limit(200),
+    db.from("reminders").select("id, title, remind_date, remind_time, done, category, category_tag").eq("user_id", userId).is("deleted_at", null).gte("remind_date", from).lte("remind_date", to).limit(200),
     lim.useMemory
       ? db.from("memories").select("category, content").eq("user_id", userId).eq("sensitive", false).is("deleted_at", null).order("updated_at", { ascending: false }).limit(40)
       : Promise.resolve({ data: [] as { category: string; content: string }[] }),
+    db.from("shopping_items").select("id, name, checked").eq("user_id", userId).is("deleted_at", null).order("created_at", { ascending: false }).limit(100),
   ]);
   const hm = (t: string | null) => (t ? t.slice(0, 5) : "");
   const items: Item[] = [
-    ...(tasks.data ?? []).map((t) => ({ date: t.due_date, time: hm(t.due_time), label: t.title, done: t.completed, kind: "task", category: t.category, priority: t.priority })),
-    ...(appts.data ?? []).map((a) => ({ date: a.appt_date, time: hm(a.appt_time), label: a.title, done: a.done, kind: "appointment", category: a.category })),
-    ...(rems.data ?? []).map((r) => ({ date: r.remind_date, time: hm(r.remind_time), label: r.title, done: r.done, kind: "reminder", category: r.category_tag || "personal" })),
+    ...(tasks.data ?? []).map((t) => ({ id: t.id, tkind: "task", date: t.due_date, time: hm(t.due_time), label: t.title, done: t.completed, kind: "task", category: t.category, priority: t.priority })),
+    ...(appts.data ?? []).map((a) => ({ id: a.id, tkind: "event", date: a.appt_date, time: hm(a.appt_time), label: a.title, done: a.done, kind: "appointment", category: a.category })),
+    ...(rems.data ?? []).map((r) => ({ id: r.id, tkind: r.category === "bill" ? "bill" : "reminder", date: r.remind_date, time: hm(r.remind_time), label: r.title, done: r.done, kind: r.category === "bill" ? "bill" : "reminder", category: r.category_tag || "personal" })),
   ];
-  const context = buildContext({ today, items, memories: mems.data ?? [], plan });
+  const shopping = (shop.data ?? []).map((x) => ({ id: x.id as string, name: x.name as string, checked: !!x.checked }));
+  const refs = assignRefs(items, shopping);
+  const context = buildContext({ today, items, memories: mems.data ?? [], plan, shopping });
   const system = buildSystemPrompt({ today, tz, name: (profile?.display_name || "").slice(0, 30), plan });
   const messages = [...history, { role: "user" as const, content: `<planner_data>\n${context}\n</planner_data>\n\nPerson says: ${message}` }];
 
@@ -111,7 +114,7 @@ Deno.serve(async (req) => {
   const parsed = parseModelJson(text);
   const reply = (parsed?.reply || "").trim().slice(0, 3000) || "Sorry, I couldn't put that together. Could you try rephrasing?";
   const proposals = parsed ? markConflicts(
-    sanitizeProposals(parsed.proposals, today),
+    sanitizeProposals(parsed.proposals, today, refs),
     items.filter((i) => i.kind === "appointment" && !i.done && i.time).map((i) => ({ date: i.date, time: i.time, title: i.label })),
   ) : [];
 
