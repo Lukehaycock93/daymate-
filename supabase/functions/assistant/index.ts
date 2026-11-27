@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
   const to = new Date(Date.parse(today) + (lim.horizonDays + 1) * 86400000).toISOString().slice(0, 10);
   const [tasks, appts, rems, mems, shop] = await Promise.all([
     db.from("tasks").select("id, title, due_date, due_time, completed, priority, category").eq("user_id", userId).is("deleted_at", null).gte("due_date", from).lte("due_date", to).limit(200),
-    db.from("appointments").select("id, title, appt_date, appt_time, done, category").eq("user_id", userId).is("deleted_at", null).gte("appt_date", from).lte("appt_date", to).limit(200),
+    db.from("appointments").select("id, title, appt_date, appt_time, done, category, location").eq("user_id", userId).is("deleted_at", null).gte("appt_date", from).lte("appt_date", to).limit(200),
     db.from("reminders").select("id, title, remind_date, remind_time, done, category, category_tag").eq("user_id", userId).is("deleted_at", null).gte("remind_date", from).lte("remind_date", to).limit(200),
     lim.useMemory
       ? db.from("memories").select("category, content").eq("user_id", userId).eq("sensitive", false).is("deleted_at", null).order("updated_at", { ascending: false }).limit(40)
@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
   const hm = (t: string | null) => (t ? t.slice(0, 5) : "");
   const items: Item[] = [
     ...(tasks.data ?? []).map((t) => ({ id: t.id, tkind: "task", date: t.due_date, time: hm(t.due_time), label: t.title, done: t.completed, kind: "task", category: t.category, priority: t.priority })),
-    ...(appts.data ?? []).map((a) => ({ id: a.id, tkind: "event", date: a.appt_date, time: hm(a.appt_time), label: a.title, done: a.done, kind: "appointment", category: a.category })),
+    ...(appts.data ?? []).map((a) => ({ id: a.id, tkind: "event", date: a.appt_date, time: hm(a.appt_time), label: a.title, done: a.done, kind: "appointment", category: a.category, location: a.location ?? "" })),
     ...(rems.data ?? []).map((r) => ({ id: r.id, tkind: r.category === "bill" ? "bill" : "reminder", date: r.remind_date, time: hm(r.remind_time), label: r.title, done: r.done, kind: r.category === "bill" ? "bill" : "reminder", category: r.category_tag || "personal" })),
   ];
   const shopping = (shop.data ?? []).map((x) => ({ id: x.id as string, name: x.name as string, checked: !!x.checked }));

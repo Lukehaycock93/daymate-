@@ -36,6 +36,7 @@ const STARTERS = [
 
 export function initAssistant(DM) {
   const { Store, Account, UI, confirmDialog, CATEGORIES, PRIORITY_LABEL } = DM;
+  const needsConfirm = (p) => (p.op || 'add') === 'add' && p.kind === 'event' && !!p.location;   // a new appointment with an address always waits for a tap
   const { $, esc, icon, plural, todayStr, parseDate, isValidDate, isValidTime, cleanText, safeLS, nowISO } = helpers(DM);
   const ui = {
     mode: 'loading', consent: null, convId: '', messages: [], busy: false, history: null, showHistory: false, skipped: new Set(), memDone: new Set(),
@@ -168,6 +169,7 @@ export function initAssistant(DM) {
         if (ch.time) { if (!isValidTime(ch.time)) return fail('That time isn’t valid.'); patch.time = ch.time; }
         if (ch.priority && col === 'tasks') patch.priority = ok(ch.priority, ['low', 'medium', 'high', 'urgent'], item.priority);
         if (ch.note && col === 'reminders') patch.note = cleanText(ch.note, 200);
+        if (ch.location && col === 'reminders') patch.location = cleanText(ch.location, 200);
       }
       if (!Object.keys(patch).length) return fail('Nothing to change. Pick a date first.');
       const prev = {}; Object.keys(patch).forEach((k) => { prev[k] = item[k]; });
@@ -208,7 +210,7 @@ export function initAssistant(DM) {
     if (dupe) return { ok: true, text: 'That’s already in your planner' };
     const item = isTask
       ? Store.add('tasks', { title, priority, category, repeat, date, time, completed: false, completedOn: '', completedAt: '' })
-      : Store.add('reminders', { title, kind: ok(p.kind, ['event', 'reminder', 'bill'], 'reminder'), category, repeat, important: !!p.important, date, time, note: cleanText(p.note, 200), done: false });
+      : Store.add('reminders', { title, kind: ok(p.kind, ['event', 'reminder', 'bill'], 'reminder'), category, repeat, important: !!p.important, date, time, note: cleanText(p.note, 200), location: p.kind === 'event' ? cleanText(p.location, 200) : '', done: false });
     return { ok: true, text: `Added “${title}” on ${dateLabel(date)}`, undo: () => Store.remove(col, item.id) };
   }
 
@@ -225,7 +227,7 @@ export function initAssistant(DM) {
   /** Adds, edits and tick-offs happen immediately (with Undo). Deletes and anything missing a date wait for the person. */
   function autoApply(msg) {
     const props = msg.proposals || [];
-    const ready = props.map((p, i) => [p, i]).filter(([p, i]) => opOf(p) !== 'delete' && !p.needs_clarification && !p.ask_date && !isDone(msg.id, i));
+    const ready = props.map((p, i) => [p, i]).filter(([p, i]) => opOf(p) !== 'delete' && !needsConfirm(p) && !p.needs_clarification && !p.ask_date && !isDone(msg.id, i));
     if (!ready.length || ready.length > AUTO_APPLY_MAX) return;
     const undos = []; let n = 0;
     ready.forEach(([, i]) => { const r = apply(msg.id, i); if (r && r.ok) { n += 1; if (r.undo) undos.push([i, r.undo]); } });
@@ -257,7 +259,8 @@ export function initAssistant(DM) {
       main = `<strong class="ai-prop__title">${p.important ? '★ ' : ''}${esc(p.title)}</strong>
         ${needsDate
     ? `<p class="ai-prop__q">${esc(p.needs_clarification || 'Which day should this be on?')}</p>${done ? '' : `<input class="input ai-prop__date" type="date" min="${todayStr()}" aria-label="Choose a date for ${esc(p.title)}">`}`
-    : `<p class="ai-prop__when">${icon('calendar')} ${esc(dateLabel(p.date))}${p.time ? ` · ${esc(p.time)}` : ' · all day'}${p.date_basis ? `<small> (${esc(p.date_basis)})</small>` : ''}</p>`}`;
+    : `<p class="ai-prop__when">${icon('calendar')} ${esc(dateLabel(p.date))}${p.time ? ` · ${esc(p.time)}` : ' · all day'}${p.date_basis ? `<small> (${esc(p.date_basis)})</small>` : ''}</p>`}
+        ${p.kind === 'event' && p.location ? `<div class="ai-loc"><p class="ai-prop__q">Is this the right address? Check it on the map, then add.</p>${DM.helpers.locHtml(p.location)}</div>` : ''}`;
     } else {
       const t = p.target || {};
       const ch = p.changes || {};
@@ -267,6 +270,7 @@ export function initAssistant(DM) {
       if (ch.title || ch.name) lines.push(`Rename to “${esc(ch.title || ch.name)}”`);
       if (ch.priority) lines.push(`Priority: ${esc(PRIORITY_LABEL[ch.priority] || ch.priority)}`);
       if (ch.note) lines.push(`Note: ${esc(ch.note)}`);
+      if (ch.location) lines.push(`${icon('pin')} Where: ${esc(ch.location)}`);
       main = `<strong class="ai-prop__title">${esc(t.title || p.title)}</strong>
         ${whenLine(t) ? `<p class="ai-prop__was">Currently ${esc(whenLine(t))}</p>` : ''}
         ${op === 'update' ? `<p class="ai-prop__when">${lines.join('<br>') || ''}</p>` : ''}
@@ -310,7 +314,7 @@ export function initAssistant(DM) {
   }
   function bubble(m) {
     const props = m.proposals || [];
-    const pending = props.filter((p, i) => opOf(p) !== 'delete' && !p.needs_clarification && !p.ask_date && !isDone(m.id, i) && !ui.skipped.has(key(m.id, i)));
+    const pending = props.filter((p, i) => opOf(p) !== 'delete' && !needsConfirm(p) && !p.needs_clarification && !p.ask_date && !isDone(m.id, i) && !ui.skipped.has(key(m.id, i)));
     return `
       <li class="ai-msg ai-msg--${m.role}">
         <div class="ai-bubble">${nl(m.content)}</div>
@@ -507,7 +511,7 @@ export function initAssistant(DM) {
     'ai-add-all': (el) => {
       const m = ui.messages.find((x) => x.id === el.dataset.msg); if (!m) return;
       let n = 0;
-      (m.proposals || []).forEach((p, i) => { if (opOf(p) !== 'delete' && !p.needs_clarification && !p.ask_date && !isDone(m.id, i)) { const r = apply(m.id, i); if (r && r.ok) n += 1; } });
+      (m.proposals || []).forEach((p, i) => { if (opOf(p) !== 'delete' && !needsConfirm(p) && !p.needs_clarification && !p.ask_date && !isDone(m.id, i)) { const r = apply(m.id, i); if (r && r.ok) n += 1; } });
       if (n) say(`${plural(n, 'change', 'changes')} made`, view('View'));
       DM.views.renderAll();
     },
@@ -516,82 +520,6 @@ export function initAssistant(DM) {
     'open-ai': () => openSheet(),
   });
 
-  /* ---- Location & weather (Settings) ---- */
-  const home = { name: '', lat: null, lon: null, results: null, busy: false, msg: '', wx: null, wxFor: '' };
-  const WX = { 0: 'Clear', 1: 'Mostly clear', 2: 'Partly cloudy', 3: 'Overcast', 45: 'Fog', 48: 'Fog', 51: 'Drizzle', 53: 'Drizzle', 55: 'Drizzle', 56: 'Drizzle', 57: 'Drizzle', 61: 'Light rain', 63: 'Rain', 65: 'Heavy rain', 66: 'Freezing rain', 67: 'Freezing rain', 71: 'Light snow', 73: 'Snow', 75: 'Heavy snow', 77: 'Snow', 80: 'Showers', 81: 'Showers', 82: 'Heavy showers', 85: 'Snow showers', 86: 'Snow showers', 95: 'Thunderstorm', 96: 'Thunderstorm', 99: 'Thunderstorm' };
-  const UK_POSTCODE = /^[A-Za-z]{1,2}\d[A-Za-z\d]?\s*\d[A-Za-z]{2}$/;
-  const r2 = (n) => Math.round(n * 100) / 100;
-  async function loadHome() {
-    if (!Account.configured || !session.user) { home.name = ''; return; }
-    try {
-      const { data } = await session.client.from('user_preferences').select('home_name,home_lat,home_lon').eq('user_id', session.user.id).maybeSingle();
-      home.name = (data && data.home_name) || ''; home.lat = data ? data.home_lat : null; home.lon = data ? data.home_lon : null;
-    } catch (_) { /* leave as is */ }
-  }
-  async function loadWeather() {
-    if (!home.name || home.lat == null) { home.wx = null; return; }
-    const key = `${home.lat},${home.lon}`; if (home.wx && home.wxFor === key) return;
-    try {
-      const q = `latitude=${home.lat}&longitude=${home.lon}&current=temperature_2m,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=4&wind_speed_unit=mph`;
-      const r = await fetch(`https://api.open-meteo.com/v1/forecast?${q}`); const j = await r.json();
-      if (j && j.current && j.daily) { home.wx = j; home.wxFor = key; }
-    } catch (_) { home.wx = null; }
-  }
-  function weatherCard() {
-    const j = home.wx; if (!j) return home.name ? '<p class="fine">Weather isn’t available right now.</p>' : '';
-    const label = (c) => WX[c] || 'Mixed';
-    const days = j.daily.time.slice(1, 4).map((t, i) => `<li><span>${esc(new Date(t + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'short' }))}</span><span>${esc(label(j.daily.weather_code[i + 1]))}</span><strong>${Math.round(j.daily.temperature_2m_min[i + 1])}–${Math.round(j.daily.temperature_2m_max[i + 1])}°</strong></li>`).join('');
-    return `<div class="ai-wx"><div class="ai-wx__now"><strong>${Math.round(j.current.temperature_2m)}°C</strong><span>${esc(label(j.current.weather_code))} · wind ${Math.round(j.current.wind_speed_10m)} mph</span></div>
-      <p class="fine">Today: ${Math.round(j.daily.temperature_2m_min[0])}–${Math.round(j.daily.temperature_2m_max[0])}°C${j.daily.precipitation_probability_max[0] != null ? `, ${j.daily.precipitation_probability_max[0]}% chance of rain` : ''}</p>
-      <ul class="ai-wx__days">${days}</ul></div>`;
-  }
-  function homeField() {
-    const anchor = document.getElementById('themeLabel'); if (!anchor) return;
-    let box = document.getElementById('homeField');
-    if (!box) { box = document.createElement('div'); box.className = 'field'; box.id = 'homeField'; anchor.closest('.field').parentNode.insertBefore(box, anchor.closest('.field')); }
-    if (!Account.configured || !session.user) {
-      box.innerHTML = `<span class="field__label">Location &amp; weather</span><p class="field__hint">Sign in to set your postcode or town. Daymate AI then uses the weather for your plans.</p>`; return;
-    }
-    box.innerHTML = `
-      <label class="field__label" for="homeInput">Location &amp; weather</label>
-      <div class="ai-home"><input class="input" id="homeInput" type="text" maxlength="60" placeholder="Postcode or town, e.g. LS6 1AA" autocomplete="postal-code" enterkeyhint="search">
-        <button type="button" class="btn btn--ghost btn--sm" data-action="home-search">Find</button></div>
-      <p class="field__hint" id="homeMsg">${esc(home.msg || (home.name ? `Home: ${home.name}. Only the area name and its approximate map position are saved, never your full postcode.` : 'Not set yet. Only the area name and its approximate map position are saved, never your full postcode.'))}</p>
-      ${home.results ? `<ul class="ai-home__list">${home.results.map((r, i) => `<li><button type="button" class="row" data-action="home-pick" data-i="${i}"><span class="row__text"><strong>${esc(r.name)}</strong><small>${esc(r.sub)}</small></span></button></li>`).join('')}</ul>` : ''}
-      ${weatherCard()}
-      ${home.name ? '<button type="button" class="link-btn" data-action="home-clear">Remove my location</button>' : ''}`;
-  }
-  async function homeSearch() {
-    const q = ((document.getElementById('homeInput') || {}).value || '').trim();
-    if (q.length < 2 || home.busy) return;
-    home.busy = true; home.msg = 'Searching…'; home.results = null; homeField();
-    try {
-      if (UK_POSTCODE.test(q)) {
-        const r = await fetch(`https://api.postcodes.io/postcodes/${encodeURIComponent(q.replace(/\s+/g, ''))}`); const j = await r.json();
-        const x = j && j.result;
-        home.results = x && x.latitude != null ? [{ name: [x.outcode, x.admin_district].filter(Boolean).join(', '), sub: [x.parish && x.parish !== x.admin_district ? x.parish : '', x.country].filter(Boolean).join(', ') || 'United Kingdom', lat: r2(x.latitude), lon: r2(x.longitude) }] : [];
-        home.msg = home.results.length ? 'Is this you?' : 'I couldn’t find that postcode. Check it, or try your town.';
-      } else {
-        const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=5&language=en&format=json`); const j = await r.json();
-        home.results = (j.results || []).map((x) => ({ name: [x.name, x.admin1].filter((v, i, a) => v && a.indexOf(v) === i).join(', '), sub: x.country || '', lat: r2(x.latitude), lon: r2(x.longitude) }));
-        home.msg = home.results.length ? 'Pick your town:' : 'No town found. Try another spelling or a postcode.';
-      }
-    } catch (_) { home.msg = navigator.onLine ? 'Couldn’t search just now. Try again.' : 'You’re offline.'; }
-    home.busy = false; homeField();
-  }
-  async function homeSave(vals) {
-    const { error } = await session.client.from('user_preferences').update(vals).eq('user_id', session.user.id);
-    if (error) { home.msg = 'Couldn’t save that. Try again.'; homeField(); return; }
-    home.name = vals.home_name || ''; home.lat = vals.home_lat; home.lon = vals.home_lon; home.results = null; home.msg = ''; home.wx = null;
-    homeField(); UI.toast(vals.home_name ? 'Location saved' : 'Location removed');
-    await loadWeather(); homeField();
-  }
-  DM.registerActions({
-    'home-search': () => homeSearch(),
-    'home-pick': (el) => { const r = home.results && home.results[Number(el.dataset.i)]; if (r) homeSave({ home_name: r.name.slice(0, 80), home_lat: r.lat, home_lon: r.lon }); },
-    'home-clear': () => homeSave({ home_name: null, home_lat: null, home_lon: null }),
-  });
-  DM.onSettingsOpen(async () => { home.results = null; home.msg = ''; homeField(); await loadHome(); homeField(); await loadWeather(); homeField(); });
   DM.registerRoute('assistant', { render });
   DM.onRender(() => { syncFab(); if (ui.sheetOpen) renderSheet(); });
   syncFab();

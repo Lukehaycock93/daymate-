@@ -67,6 +67,7 @@
       <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8v.01"/></symbol>
       <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M6 11H5.5A1.5 1.5 0 0 0 4 12.5v6A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5v-6a1.5 1.5 0 0 0-1.5-1.5H18"/></symbol>
       <symbol id="i-device" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.8"/><path d="M11 18h2"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="10" r="2.3" fill="none" stroke="currentColor" stroke-width="1.8"/></symbol>
       <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4 4"/></symbol>
       <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r=".8"/></symbol>
     </defs>
@@ -352,6 +353,11 @@
               <label class="seg__opt"><input type="radio" name="kind" value="bill"><span>Bill</span></label>
             </div>
           </div>
+          <div class="field" id="locationField" hidden>
+            <label class="field__label" for="reminderLocation">Where <span class="field__opt">(optional)</span></label>
+            <input class="input" id="reminderLocation" type="text" maxlength="200" placeholder="Address or postcode" autocomplete="street-address" enterkeyhint="done">
+            <p class="field__hint">Shows Google Maps and Apple Maps directions buttons.</p>
+          </div>
           <div class="field">
             <span class="field__label">When</span>
             <div class="chips">
@@ -429,6 +435,20 @@
   </div>
 
   <!-- Settings -->
+  <div class="modal" id="m-weather" hidden>
+    <div class="modal__scrim" data-action="close-modal"></div>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="weatherTitle">
+      <div class="sheet__head">
+        <span class="sheet__grab" aria-hidden="true"></span>
+        <div class="sheet__titlebar">
+          <h2 id="weatherTitle">Weather</h2>
+          <button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+      </div>
+      <div class="sheet__scroll" id="weatherDetail"></div>
+    </section>
+  </div>
+
   <div class="modal" id="m-settings" hidden>
     <div class="modal__scrim" data-action="close-modal"></div>
     <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">

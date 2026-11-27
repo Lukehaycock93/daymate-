@@ -5,9 +5,11 @@
      • Today's schedule (a timeline of what's on today, with "next up")
      • Shopping list overview
    ========================================================================== */
+import { getPref } from './prefs.js';
+
 export function initDashboard(DM) {
   const { Store } = DM;
-  const { $, esc, icon, todayStr, nowHM, plural, kindIcon, kindLabel } = DM.helpers;
+  const { $, esc, icon, todayStr, nowHM, plural, kindIcon, kindLabel, locHtml } = DM.helpers;
   const home = document.getElementById('view-home');
   const quick = home && home.querySelector('.quick');
   const myDay = home && home.querySelector('[aria-labelledby="myDayHeading"]');
@@ -31,7 +33,7 @@ export function initDashboard(DM) {
   function todays() {
     const today = todayStr();
     const out = [];
-    Store.state.reminders.forEach((r) => { if (r.date === today) out.push({ type: r.kind, title: r.title, time: r.time, done: !!r.done }); });
+    Store.state.reminders.forEach((r) => { if (r.date === today) out.push({ type: r.kind, title: r.title, time: r.time, done: !!r.done, location: r.kind === 'event' ? r.location : '' }); });
     Store.state.tasks.forEach((t) => { if (t.date === today && t.time) out.push({ type: 'task', title: t.title, time: t.time, done: !!t.completed }); });
     out.sort((a, b) => (a.time || '').localeCompare(b.time || '') || a.title.localeCompare(b.title));
     return out;
@@ -48,6 +50,7 @@ export function initDashboard(DM) {
             <span class="timeline__dot" aria-hidden="true"></span>
             <span class="timeline__card"><span class="timeline__ico">${icon(i.type === 'task' ? 'list' : kindIcon(i.type))}</span>
               <span class="timeline__txt"><strong>${esc(i.title)}</strong><small>${i.type === 'task' ? 'Task' : esc(kindLabel(i.type))}${n === nextIdx ? ' · Next up' : ''}</small></span></span>
+            ${i.type === 'event' ? locHtml(i.location) : ''}
           </li>`).join('')}</ol>${items.length > 6 ? `<a class="link-btn" href="#/planner">${plural(items.length - 6, 'more', 'more')} today</a>` : ''}`
       : `<div class="card mini-empty"><span class="mini-empty__ico">${icon('calendar-check')}</span><div><strong>Nothing scheduled today</strong><p>Enjoy the space, or ask Daymate AI to help plan your day.</p></div></div>`;
     sched.innerHTML = `<div class="section__head"><h2 id="schedHeading">Today’s schedule</h2><a class="chip-btn" href="#/planner">${icon('calendar')}Planner</a></div>${body}`;
@@ -67,7 +70,8 @@ export function initDashboard(DM) {
       <button type="button" class="card shopmini__card" data-action="open-shopping" aria-label="Open shopping list">${body}</button>`;
   }
 
-  const draw = () => { renderSchedule(); renderShopping(); };
+  const draw = () => { sched.hidden = !getPref('showSchedule'); shop.hidden = !getPref('showShopping'); renderSchedule(); renderShopping(); };
+  window.addEventListener('daymate:prefs', draw);
   DM.onRender(draw);
   draw();
   setInterval(() => { if (!document.hidden) renderSchedule(); }, 60000);      // keeps "next up" current
