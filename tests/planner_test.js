@@ -90,6 +90,8 @@ const results = []; const ok = (n, c, d = '') => results.push([n, !!c, d]);
   await page.click('[data-mode="week"]'); await page.waitForSelector('.pl-week');
   await page.evaluate(([i3]) => DAYMATE.Store.add('tasks', { title: 'Drag me', priority: 'medium', category: 'personal', repeat: '', date: new Date().toLocaleDateString('en-CA'), time: '', completed: false, completedOn: '', completedAt: '' }), [in3]);
   await page.waitForTimeout(300);
+  await page.evaluate(() => [...document.querySelectorAll('.pl-row')].find((r) => r.textContent.includes('Drag me')).scrollIntoView({ block: 'center' }));   // keep it clear of the floating nav
+  await page.waitForTimeout(150);
   const row = await page.$('.pl-row[data-drag] >> text=Drag me'); const rb = await (await page.$('.pl-row:has-text("Drag me")')).boundingBox();
   const chip = await page.$(`.pl-wd[data-date="${tomorrow}"]`); const cb = await chip.boundingBox();
   await page.mouse.move(rb.x + 120, rb.y + rb.height / 2); await page.mouse.down(); await page.mouse.move(rb.x + 130, rb.y + 20, { steps: 3 });

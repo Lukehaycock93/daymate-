@@ -100,6 +100,8 @@ const results = []; const ok = (n, c, d = '') => { results.push([n, !!c, d]); };
   const notes = await page.evaluate(() => window.DAYMATE.Store.state.notifications.map((n) => [n.type, n.title]));
   ok('bill due earlier today produces in-app alerts (bill and/or missed)', notes.some(([t]) => t === 'missed' || t === 'bill'), JSON.stringify(notes));
   ok('bell shows unread count', !(await page.locator('#bellBadge').isHidden()));
+  await page.waitForSelector('.toast', { state: 'detached', timeout: 8000 }).catch(() => {});   // a toast can sit over the banner for a few seconds
+  await page.locator('[data-consent="no"]').click({ timeout: 3000 }).catch(() => {});   // the privacy banner floats over the list until it's answered
   const unreadBefore = await page.locator('.note.is-unread').count();
   await page.click('.note.is-unread .note__main >> nth=0'); await page.waitForTimeout(200);
   ok('tap marks one as read', (await page.locator('.note.is-unread').count()) === unreadBefore - 1);

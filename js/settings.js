@@ -189,6 +189,7 @@ export function initSettingsHub(DM) {
 
       <h3 class="group-title">Your DAYMATE</h3>
       <div class="rows">
+        ${row({ href: '#/money', icon: 'wallet', title: 'Money', sub: 'Budgets, bills and goals' })}
         ${row({ href: '#/notifications', icon: 'bell', title: 'Notification centre', sub: info.unread ? plural(info.unread, 'unread alert', 'unread alerts') : 'Reminders, alerts and history' })}
         ${row({ href: '#/assistant', icon: 'sparkles', title: 'Ask DAYMATE', sub: Account.user ? 'Your AI planning assistant' : 'Sign in to chat with your assistant' })}
         ${row({ href: '#/memory', icon: 'sparkles', title: 'Memory', sub: `${plural(Store.state.memories.length, 'thing', 'things')} remembered` })}

@@ -33,7 +33,7 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.9.0',
+    version: '0.10.0',
     stage: 3,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
@@ -45,6 +45,7 @@
     home:      { title: null,        sub: null },
     planner:   { title: 'Planner',   sub: 'Plan your days with ease' },
     money:     { title: 'Money',     sub: 'Calm control of your finances' },
+    wellbeing: { title: 'Wellbeing', sub: 'Looking after you, too' },
     household: { title: 'Household', sub: 'Keep your home running smoothly' },
     more:      { title: 'More',      sub: 'Account, settings and what’s next' },
     notifications: { title: 'Notifications', sub: 'Reminders, alerts and history' },
@@ -98,6 +99,13 @@
           { status: 'premium', feature: 'smart-scheduling' },
         ]},
       ],
+    },
+    wellbeing: {
+      icon: 'heart',
+      heroTitle: 'Space for you, too.',
+      heroText: 'Wellbeing is on the way: gentle check-ins and healthy routines that fit around the rest of your day. Nothing to set up yet.',
+      extra: null,
+      groups: [],
     },
     money: {
       icon: 'wallet',
@@ -1168,6 +1176,11 @@
 
         <h3 class="group-title">Your DAYMATE</h3>
         <div class="rows">
+          <a class="row" href="#/money">
+            <span class="row__icon">${icon('wallet')}</span>
+            <span class="row__text"><strong>Money</strong><small>Budgets, bills and goals</small></span>
+            ${icon('chevron', 'row__chev')}
+          </a>
           <a class="row" href="#/notifications">
             <span class="row__icon">${icon('bell')}</span>
             <span class="row__text"><strong>Notification centre</strong><small>${unread ? `${plural(unread, 'unread alert', 'unread alerts')}` : 'Reminders, alerts and history'}</small></span>
@@ -1533,7 +1546,8 @@
       else if (!active) v.hidden = true;
     });
     $$('.nav__item').forEach((a) => {
-      if (a.dataset.route === next) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+      const here = next === 'money' ? 'more' : next;     // Money now lives under More
+      if (a.dataset.route === here) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
     });
     renderAll();
     if (changed) { window.scrollTo(0, 0); $('#main').focus({ preventScroll: true }); }
