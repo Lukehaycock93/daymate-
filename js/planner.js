@@ -15,7 +15,7 @@ const HORIZON_DAYS = 800;       // how far ahead repeating items are shown
 
 export function initPlanner(DM) {
   const { Store, UI, helpers, CATEGORIES, PRIORITY_LABEL, PRIORITY_RANK } = DM;
-  const { $, $$, esc, icon, plural, todayStr, nowHM, parseDate, toDateStr, emptyState, safeLS } = helpers;
+  const { $, $$, esc, icon, plural, todayStr, nowHM, parseDate, toDateStr, emptyState, safeLS, locHtml } = helpers;
   const catOf = (k) => CATEGORIES.find((c) => c.key === k) || CATEGORIES[0];
   const loadMode = () => { const m = safeLS.get('daymate:plannerMode'); return MODES.includes(m) ? m : 'day'; };
   const ui = { mode: loadMode(), selected: todayStr(), filter: 'all', drag: null };
@@ -113,6 +113,7 @@ export function initPlanner(DM) {
             ${it.repeat ? `<span class="pl-sub">${icon('repeat')} ${esc({ daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly' }[it.repeat])}</span>` : ''}
           </span>
         </button>
+        ${r.type === 'event' ? locHtml(it.location) : ''}
       </li>`;
   }
 

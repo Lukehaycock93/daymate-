@@ -78,7 +78,7 @@ export type RefMap = Map<string, Target>;
 
 export type Proposal = {
   op: string; kind: string; title: string; date: string | null; time: string | null; priority: string; category: string;
-  repeat: string; important: boolean; note: string; date_basis: string; needs_clarification: string | null; conflict: string | null;
+  repeat: string; important: boolean; note: string; location: string; date_basis: string; needs_clarification: string | null; conflict: string | null;
   items: string[];                       // shopping: names to add
   target: Target | null;                 // update / delete / complete: the real item (resolved on the server)
   changes: Record<string, string> | null;// update: only the fields that change
@@ -118,7 +118,7 @@ const oneOf = <T extends readonly string[]>(list: T, v: unknown, fallback: T[num
 
 const blank = (): Proposal => ({
   op: "add", kind: "task", title: "", date: null, time: null, priority: "medium", category: "personal", repeat: "", important: false,
-  note: "", date_basis: "", needs_clarification: null, conflict: null, items: [], target: null, changes: null, ask_date: false,
+  note: "", location: "", date_basis: "", needs_clarification: null, conflict: null, items: [], target: null, changes: null, ask_date: false,
 });
 
 /** Turn the model's raw proposals into safe ones. Never invents a date or an item: anything doubtful becomes a question,
@@ -144,6 +144,7 @@ export function sanitizeProposals(raw: unknown, today: string, refs?: RefMap): P
           if (isValidTime(o.time)) ch.time = o.time;
           if (typeof o.priority === "string" && (PRIORITIES as readonly string[]).includes(o.priority) && target.kind === "task") ch.priority = o.priority;
           const n = clip(o.note, 200); if (n && target.kind !== "task") ch.note = n;
+          const loc = clip(o.location, 200); if (loc && target.kind === "event") ch.location = loc;
           if (o.date !== undefined && o.date !== null && o.date !== "") {
             if (isRealDate(o.date) && o.date >= today && o.date <= addDays(today, 3660)) ch.date = o.date;
             else { p.ask_date = true; p.needs_clarification = "Which day should I move this to?"; }
@@ -185,6 +186,7 @@ export function sanitizeProposals(raw: unknown, today: string, refs?: RefMap): P
       repeat: oneOf(REPEATS, o.repeat, ""),
       important: o.important === true,
       note: clip(o.note, 200),
+      location: kind === "event" ? clip(o.location, 200) : "",
       date_basis: clip(o.date_basis, 120),
       needs_clarification: date ? null : question,
     });
@@ -221,7 +223,7 @@ export function parseModelJson(text: string): { reply: string; proposals: unknow
   } catch (_) { return null; }
 }
 
-export type Item = { id?: string; ref?: string; tkind?: string; date: string; time: string; label: string; done?: boolean; kind: string; category: string; priority?: string };
+export type Item = { location?: string; id?: string; ref?: string; tkind?: string; date: string; time: string; label: string; done?: boolean; kind: string; category: string; priority?: string };
 export type ShopItem = { id: string; name: string; checked: boolean; ref?: string };
 
 const REF_PREFIX: Record<string, string> = { task: "t", event: "a", reminder: "r", bill: "b", shopping: "s" };
@@ -247,7 +249,7 @@ export function buildContext(opts: { today: string; items: Item[]; memories: { c
   const horizonEnd = addDays(opts.today, lim.horizonDays);
   const upcoming = opts.items.filter((i) => i.date >= opts.today && i.date <= horizonEnd)
     .sort((a, b) => (a.date + (a.time || "")).localeCompare(b.date + (b.time || "")));
-  const line = (i: Item) => `${i.ref ? `{${i.ref}} ` : ""}${i.date}${i.time ? " " + i.time : ""} [${i.kind}/${i.category}${i.priority && i.priority !== "medium" ? "/" + i.priority : ""}]${i.done ? " (done)" : ""} ${i.label}`;
+  const line = (i: Item) => `${i.ref ? `{${i.ref}} ` : ""}${i.date}${i.time ? " " + i.time : ""} [${i.kind}/${i.category}${i.priority && i.priority !== "medium" ? "/" + i.priority : ""}]${i.done ? " (done)" : ""} ${i.label}${i.location ? ` @ ${clip(i.location, 120)}` : ""}`;
   const parts = [
     `OVERDUE (${overdue.length}):`, ...overdue.slice(0, 20).map(line),
     `NEXT ${lim.horizonDays} DAYS (${upcoming.length}):`, ...upcoming.slice(0, lim.maxContextItems).map(line),
@@ -291,6 +293,9 @@ DATES (very important)
 - If the date is unclear or missing ("sometime next week", "soon", "later"), set date to null and put a short question in needs_clarification. Never guess a date. Never guess a time: leave time null unless a time was stated.
 - Dates are YYYY-MM-DD. Times are 24-hour HH:MM.
 
+LOCATIONS
+- For an appointment (kind "event"), if the person gave or pasted a place or address (for example an appointment letter or text message), put it in "location" exactly as written, including street, town and postcode. Never invent or guess an address: leave location null when none was given. Planner lines show an appointment's address after "@"; use it to answer "where is…?". DAYMATE shows the address with map buttons and asks the person to confirm it before adding.
+
 Categories: personal, family, work, shopping, bills. Priority: low, medium (normal), high, urgent. repeat: "", daily, weekly, monthly, yearly. Set important=true for birthdays/renewals.
 
 WHAT YOU CAN DO
@@ -331,6 +336,7 @@ export const RESPONSE_SCHEMA = {
           repeat: { type: "STRING", enum: ["none", "daily", "weekly", "monthly", "yearly"], nullable: true },
           important: { type: "BOOLEAN", nullable: true },
           note: { type: "STRING", nullable: true },
+          location: { type: "STRING", nullable: true },
           date_basis: { type: "STRING", nullable: true },
           needs_clarification: { type: "STRING", nullable: true },
         },

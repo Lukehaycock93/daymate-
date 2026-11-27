@@ -1200,3 +1200,14 @@ select.input { appearance: none; background-image: linear-gradient(45deg, transp
 :root[data-theme="light"] .seg__opt--urgent input:checked + span { color: var(--text); }
 
 .pl-mode { text-align: center; justify-content: center; }
+
+/* Appointment address + Google / Apple Maps buttons */
+.up, .pl-row { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.loc { flex-basis: 100%; max-width: 100%; order: 20; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; min-width: 0; }
+.loc__addr { flex: 1 1 0; display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; color: var(--muted); }
+.loc__addr .icon { width: 15px; height: 15px; flex: none; }
+.loc__addr span:last-child { overflow-wrap: anywhere; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.loc__btns { display: flex; gap: 6px; flex: none; }
+.mapbtn { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; padding: 0 12px; border-radius: 999px; font-size: 12.5px; font-weight: 650; text-decoration: none; color: var(--accent-text, var(--blue-400)); background: rgba(47, 123, 255, 0.12); border: 1px solid rgba(77, 155, 255, 0.3); }
+.mapbtn--apple { color: var(--text); background: rgba(var(--ov), 0.08); border-color: rgba(var(--ov), 0.18); }
+.mapbtn:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }

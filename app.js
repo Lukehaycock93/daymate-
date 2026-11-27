@@ -33,7 +33,7 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.8.0',
+    version: '0.9.0',
     stage: 3,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
@@ -138,7 +138,6 @@
 
   const ROADMAP = [
     { status: 'soon', icon: 'calendar', title: 'Calendar & email connections', text: 'Connect Google and Microsoft accounts.' },
-    { status: 'soon', icon: 'sparkles', title: 'AI memory',     text: 'Let the assistant suggest things worth remembering, for you to approve.' },
   ];
 
   const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
@@ -343,6 +342,7 @@
             date: isValidDate(r.date) ? r.date : today,
             time: isValidTime(r.time) ? r.time : '',
             note: cleanText(r.note, 200),
+            location: cleanText(r.location, 200),
             category: CATEGORY_KEYS.includes(r.category) ? r.category : (r.kind === 'bill' ? 'bills' : 'personal'),
             repeat: REPEATS.includes(r.repeat) ? r.repeat : '',
             important: r.important === true,
@@ -768,7 +768,7 @@
     const items = [];
     Store.state.reminders.forEach((r) => {
       if (r.done) return;
-      items.push({ type: r.kind, id: r.id, title: r.title, date: r.date, time: r.time, note: r.note, overdue: isReminderOverdue(r, today, hm) });
+      items.push({ type: r.kind, id: r.id, title: r.title, date: r.date, time: r.time, note: r.note, location: r.kind === 'event' ? r.location : '', overdue: isReminderOverdue(r, today, hm) });
     });
     Store.state.tasks.forEach((t) => {
       if (t.completed || t.date <= today) return;
@@ -785,6 +785,24 @@
 
   const shoppingLeft = () => Store.state.shopping.filter((i) => !i.checked).length;
   const remindersToday = () => { const t = todayStr(); return Store.state.reminders.filter((r) => !r.done && r.date === t).length; };
+  /* ---- Maps: directions straight from an appointment's address ---- */
+  function mapUrls(address) {
+    const q = encodeURIComponent(cleanText(address, 200));
+    return { google: `https://www.google.com/maps/dir/?api=1&destination=${q}`, apple: `https://maps.apple.com/?daddr=${q}&dirflg=d` };
+  }
+  /** The address line with compact Google / Apple Maps buttons. Empty when there is no address. */
+  function locHtml(address) {
+    const a = cleanText(address, 200);
+    if (!a) return '';
+    const u = mapUrls(a);
+    return `<div class="loc"><span class="loc__addr">${icon('pin')}<span>${esc(a)}</span></span>
+      <span class="loc__btns"><a class="mapbtn" href="${esc(u.google)}" target="_blank" rel="noopener noreferrer" aria-label="Directions in Google Maps to ${esc(a)}" title="Google Maps">Google</a><a class="mapbtn mapbtn--apple" href="${esc(u.apple)}" target="_blank" rel="noopener noreferrer" aria-label="Directions in Apple Maps to ${esc(a)}" title="Apple Maps">Apple</a></span></div>`;
+  }
+  function syncLocationField() {
+    const f = $('#locationField'); if (!f) return;
+    f.hidden = getRadio($('#reminderForm'), 'kind') !== 'event';
+  }
+
   const kindLabel = (k) => (k === 'event' ? 'Appointment' : k === 'bill' ? 'Bill' : 'Reminder');
   const kindIcon = (k) => (k === 'event' ? 'calendar' : k === 'bill' ? 'receipt' : 'bell');
   const timeSignature = () => {
@@ -920,6 +938,7 @@
         </button>
         ${it.type === 'task' ? '' : `<button type="button" class="tick" data-action="toggle-reminder" aria-pressed="false" aria-label="Mark done: ${esc(it.title)}">${icon('check')}</button>`}
         <button type="button" class="icon-btn icon-btn--danger" data-action="${delAction}" aria-label="Delete: ${esc(it.title)}">${icon('trash')}</button>
+        ${it.type === 'event' ? locHtml(it.location) : ''}
       </li>`;
   }
 
@@ -1114,6 +1133,13 @@
     return map[Account.syncState] || 'Signed in';
   }
 
+  /** The settings hub (js/settings.js) draws More; if it ever fails, the original More screen below is used instead. */
+  function tryMoreRenderer() {
+    try { return moreRenderer($('#view-more')) !== false; } catch (err) { console.error('[DAYMATE] Settings hub failed, using the basic More screen:', err); return false; }
+  }
+  function moreInfo() {
+    return { syncLine: syncLine(), unread: Store.state.notifications.filter((n) => !n.readAt && !n.dismissedAt).length, standalone: isStandalone(), updateReady: !!updater.waiting, roadmap: ROADMAP, planLabel: Account.planLabel(), plan: Account.getPlan() };
+  }
   function renderMore() {
     const host = $('#view-more');
     const name = Store.state.settings.name;
@@ -1195,6 +1221,7 @@
 
   /* ---- Premium screen ---- */
   let premiumRenderer = null;
+  let moreRenderer = null;
   function renderPremium() { if (premiumRenderer) premiumRenderer(); }
 
   function openPremium(featureId) {
@@ -1214,7 +1241,7 @@
   /* ---- Orchestration ---- */
   function renderRoute() {
     if (ui.route === 'home') renderHome();
-    else if (ui.route === 'more') renderMore();
+    else if (ui.route === 'more') { if (!(moreRenderer && tryMoreRenderer())) renderMore(); }
     else if (extraRoutes[ui.route]) extraRoutes[ui.route].render($(`#view-${ui.route}`));
     else renderPreview(ui.route);
   }
@@ -1328,6 +1355,8 @@
     ui.presetDate = '';
     $('#reminderTime').value = r ? r.time : '';
     $('#reminderNote').value = r ? r.note : '';
+    $('#reminderLocation').value = r ? (r.location || '') : '';
+    syncLocationField();
     $('#reminderCategory').value = r ? r.category : 'personal';
     $('#reminderRepeat').value = r ? r.repeat : '';
     $('#reminderImportant').checked = !!(r && r.important);
@@ -1343,6 +1372,7 @@
     const date = $('#reminderDate').value;
     const time = $('#reminderTime').value;
     const note = cleanText($('#reminderNote').value, 200);
+    const locationRaw = cleanText($('#reminderLocation').value, 200);
     let ok = true;
     if (!title) { showError('reminderTitle', 'reminderTitleError', 'What should we remind you about?'); ok = false; }
     if (!isValidDate(date)) { showError('reminderDate', 'reminderDateError', 'Pick a valid date.'); ok = false; }
@@ -1353,8 +1383,9 @@
     const category = CATEGORY_KEYS.includes($('#reminderCategory').value) ? $('#reminderCategory').value : 'personal';
     const repeat = REPEATS.includes($('#reminderRepeat').value) ? $('#reminderRepeat').value : '';
     const important = $('#reminderImportant').checked;
-    if (form.dataset.id) Store.update('reminders', form.dataset.id, { title, kind, category, repeat, important, date, time, note, done: false });
-    else Store.add('reminders', { title, kind, category, repeat, important, date, time, note, done: false });
+    const location = kind === 'event' ? locationRaw : '';
+    if (form.dataset.id) Store.update('reminders', form.dataset.id, { title, kind, category, repeat, important, date, time, note, location, done: false });
+    else Store.add('reminders', { title, kind, category, repeat, important, date, time, note, location, done: false });
     Modal.close('m-reminder');
   }
 
@@ -1602,6 +1633,7 @@
 
     $('#taskForm').addEventListener('submit', submitTask);
     $('#reminderForm').addEventListener('submit', submitReminder);
+    $('#reminderForm').addEventListener('change', (e) => { if (e.target && e.target.name === 'kind') syncLocationField(); });
     $('#quickAdd').addEventListener('submit', quickAddTask);
     $('#shoppingForm').addEventListener('submit', addShoppingItem);
 
@@ -1748,10 +1780,12 @@
       APP, Store, Account, Entitlements, UI, Modal, confirmDialog,
       MEMORY_CATEGORIES, CATEGORIES, PRIORITY_LABEL, PRIORITY_RANK, REPEATS, NOTIF_TYPES, NOTIFY_DEFAULTS, FEATURES, COLLECTIONS, REMINDER_KINDS,
       helpers: { $, $$, esc, icon, plural, cleanText, cleanMultiline, uid, nowISO, pad, todayStr, nowHM, addDays, parseDate, toDateStr,
-                 dayLabel, longDate, isValidDate, isValidTime, isStandalone, isIOS, emptyState, kindLabel, kindIcon, safeLS },
+                 dayLabel, longDate, isValidDate, isValidTime, isStandalone, isIOS, emptyState, kindLabel, kindIcon, safeLS, mapUrls, locHtml },
       storage: { localAdapter, userCacheKey, safeLS },
       views: { upcomingItems, isReminderOverdue, openPremium, openTaskSheet, openReminderSheet, renderAll },
       setPremiumRenderer(fn) { premiumRenderer = fn; },
+      setMoreRenderer(fn) { moreRenderer = fn; },
+      moreInfo,
       registerRoute(name, cfg) { extraRoutes[name] = cfg; if (ui.route === name) renderAll(); },
       registerActions(map) { Object.assign(actions, map); },
       onRender(fn) { hooks.render.push(fn); },

@@ -41,11 +41,11 @@ export function toRow(col, item, userId) {
         completed: !!item.completed, completed_on: orNull(item.completedOn), completed_at: orNull(item.completedAt), ...stamps };
     case 'reminders':
       if (item.kind === 'event') {
-        return { ...base, title: item.title, appt_date: item.date, appt_time: orNull(item.time), note: item.note || '', done: !!item.done,
+        return { ...base, title: item.title, appt_date: item.date, appt_time: orNull(item.time), note: item.note || '', location: orNull(item.location), done: !!item.done,
           category: item.category || 'personal', repeat_rule: item.repeat || '', important: !!item.important, ...stamps };
       }
       return { ...base, title: item.title, category: item.kind === 'bill' ? 'bill' : 'general',
-        remind_date: item.date, remind_time: orNull(item.time), note: item.note || '', done: !!item.done,
+        remind_date: item.date, remind_time: orNull(item.time), note: item.note || '', location: orNull(item.location), done: !!item.done,
         category_tag: item.category || 'personal', repeat_rule: item.repeat || '', important: !!item.important, ...stamps };
     case 'shopping':
       return { ...base, name: item.name, checked: !!item.checked, ...stamps };
@@ -67,11 +67,11 @@ export function fromRow(tbl, row) {
       return { ...common, title: row.title, priority: row.priority, category: row.category || 'personal', repeat: row.repeat_rule || '', date: row.due_date, time: hm(row.due_time),
         completed: !!row.completed, completedOn: row.completed_on || '', completedAt: row.completed_at ? iso(row.completed_at) : '' };
     case 'appointments':
-      return { ...common, title: row.title, kind: 'event', date: row.appt_date, time: hm(row.appt_time), note: row.note || '', done: !!row.done, tbl: 'appointments',
+      return { ...common, title: row.title, kind: 'event', date: row.appt_date, time: hm(row.appt_time), note: row.note || '', location: row.location || '', done: !!row.done, tbl: 'appointments',
         category: row.category || 'personal', repeat: row.repeat_rule || '', important: !!row.important };
     case 'reminders':
       return { ...common, title: row.title, kind: row.category === 'bill' ? 'bill' : 'reminder', date: row.remind_date, time: hm(row.remind_time),
-        note: row.note || '', done: !!row.done, tbl: 'reminders',
+        note: row.note || '', location: row.location || '', done: !!row.done, tbl: 'reminders',
         category: row.category_tag || (row.category === 'bill' ? 'bills' : 'personal'), repeat: row.repeat_rule || '', important: !!row.important };
     case 'shopping_items':
       return { ...common, name: row.name, checked: !!row.checked };

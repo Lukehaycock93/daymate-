@@ -173,5 +173,12 @@ globalThis.fetch = realFetch;
   t('weather: bad days skipped, junk -> empty', wx.split('\n').length === 3 && L.formatWeather('x', null) === '' && L.formatWeather('x', { time: ['nope'] }) === '' && L.formatWeather('x', {}) === '');
   t('weather appears in context only when given', L.buildContext({ today: TODAY, items: [], memories: [], plan: 'free', weather: wx }).includes('WEATHER FORECAST') && !L.buildContext({ today: TODAY, items: [], memories: [], plan: 'free' }).includes('WEATHER'));
   t('prompt: weather rule changes with data', /ONLY the WEATHER FORECAST/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free', hasWeather: true })) && /set their home town in Settings/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free' })));
+  // --- locations ---
+  const lp = L.sanitizeProposals([{ op: 'add', kind: 'event', title: 'Dentist', date: '2026-11-30', time: '10:40', location: '  Trinity House, 5 High St, Leeds LS1 4AB  ' }, { op: 'add', kind: 'task', title: 'Call', date: '2026-11-30', location: 'nowhere' }], TODAY);
+  t('location kept (tidied) for appointments only', lp[0].location === 'Trinity House, 5 High St, Leeds LS1 4AB' && lp[1].location === '');
+  const lu = L.sanitizeProposals([{ op: 'update', kind: 'event', ref: 'a1', location: '1 New Rd, Leeds' }], TODAY, new Map([['a1', { id: 'x', kind: 'event', title: 'Dentist', date: TODAY, time: '10:00' }]]));
+  t('update can change an appointment address', lu.length === 1 && lu[0].changes.location === '1 New Rd, Leeds');
+  t('context shows an appointment address after @', L.buildContext({ today: TODAY, items: [{ id: 'i', tkind: 'event', date: TODAY, time: '10:00', label: 'Dentist', kind: 'appointment', category: 'personal', location: 'LS1 4AB' }], memories: [], plan: 'free' }).includes('Dentist @ LS1 4AB'));
+  t('schema + prompt know about location', !!L.RESPONSE_SCHEMA.properties.proposals.items.properties.location && /LOCATIONS/.test(L.buildSystemPrompt({ today: TODAY, tz: 'Europe/London', name: '', plan: 'free' })));
 }
 console.log(bad ? `${bad} of ${n} FAILED` : `${n}/${n} passed`); process.exit(bad ? 1 : 0);

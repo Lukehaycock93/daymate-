@@ -35,3 +35,6 @@ export function initTheme(DM) {
   if (DM && DM.onSettingsOpen) DM.onSettingsOpen(show);
   show();
 }
+
+export const getThemePref = read;
+export const setThemePref = (v) => { const t = v === 'light' || v === 'dark' ? v : 'auto'; write(t); applyTheme(t); };

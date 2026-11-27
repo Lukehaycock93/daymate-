@@ -9,6 +9,8 @@ import { initBilling } from './billing.js';
 import { initAds } from './ads.js';
 import { initTheme } from './theme.js';
 import { initDashboard } from './dashboard.js';
+import { initWeather } from './weather.js';
+import { initSettingsHub } from './settings.js';
 
 const ready = () => (window.DAYMATE ? Promise.resolve(window.DAYMATE)
   : new Promise((resolve) => window.addEventListener('daymate:ready', () => resolve(window.DAYMATE), { once: true })));
@@ -16,6 +18,7 @@ const ready = () => (window.DAYMATE ? Promise.resolve(window.DAYMATE)
 ready().then((DM) => {
   try { initTheme(DM); } catch (err) { console.error('[DAYMATE] Appearance failed to start:', err); }
   try { initDashboard(DM); } catch (err) { console.error('[DAYMATE] Dashboard failed to start:', err); }
+  try { initWeather(DM); } catch (err) { console.error('[DAYMATE] Weather failed to start:', err); }
   try { initPlanner(DM); } catch (err) { console.error('[DAYMATE] Planner failed to start:', err); }
   try { initAssistant(DM); } catch (err) { console.error('[DAYMATE] Assistant failed to start:', err); }
   try { initBilling(DM); } catch (err) { console.error('[DAYMATE] Premium screen failed to start:', err); }
@@ -23,5 +26,6 @@ ready().then((DM) => {
   try { initMemory(DM); } catch (err) { console.error('[DAYMATE] Memory failed to start:', err); }
   try { initNotifications(DM); } catch (err) { console.error('[DAYMATE] Notifications failed to start:', err); }
   try { initConsent(DM); } catch (err) { console.error('[DAYMATE] Privacy choices failed to start:', err); }
+  try { initSettingsHub(DM); } catch (err) { console.error('[DAYMATE] Settings hub failed to start:', err); }
   try { initAuth(DM); } catch (err) { console.error('[DAYMATE] Accounts failed to start:', err); }
 }).catch((err) => console.error('[DAYMATE] Part 2 failed to start:', err));
