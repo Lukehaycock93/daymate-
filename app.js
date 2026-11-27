@@ -33,7 +33,7 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.10.0',
+    version: '0.11.0',
     stage: 3,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
@@ -836,6 +836,8 @@
     $('#avatarIcon').style.display = name ? 'none' : '';
     const navPlan = $('#navPlan');
     if (navPlan) navPlan.textContent = Account.planLabel();
+    const homePromoSub = $('#homePromoSub');
+    if (homePromoSub) homePromoSub.textContent = Account.getPlan() === 'premium' ? 'Thank you for supporting DAYMATE' : 'No ads · smarter AI · memory · morning briefings';
     const navPlanSub = $('#navPlanSub');
     if (navPlanSub) navPlanSub.textContent = Account.getPlan() === 'premium' ? 'Thank you for supporting DAYMATE' : 'No ads · smarter AI · £2.99/month';
   }
