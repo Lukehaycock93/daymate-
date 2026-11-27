@@ -6,7 +6,7 @@
 /* ---- Floating button ---------------------------------------------------- */
 .ai-fab {
   position: fixed; z-index: 55;
-  right: 16px; bottom: calc(var(--nav-h) + var(--safe-b) + 14px);
+  right: 16px; bottom: calc(var(--nav-h) + var(--nav-gap) + var(--safe-b) + 14px);
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   height: 56px; min-width: 56px; padding: 0 16px; border-radius: 999px;
   color: var(--on-accent); font-weight: 750; font-size: 15px; letter-spacing: -0.01em;
@@ -37,14 +37,15 @@ body.ai-open .ai-fab { opacity: 0; pointer-events: none; }
 
 /* ---- Sheet / panel ------------------------------------------------------ */
 .ai-sheet { position: fixed; inset: 0; z-index: 90; pointer-events: none; }
-.ai-sheet__scrim { position: absolute; inset: 0; background: rgba(8, 14, 38, 0.5); opacity: 0; transition: opacity 0.28s var(--ease); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.ai-sheet__scrim { position: absolute; inset: 0; background: rgba(8, 14, 38, 0.5); opacity: 0; transition: opacity 0.28s var(--ease); }
 .ai-sheet.is-open { pointer-events: auto; }
 .ai-sheet.is-open .ai-sheet__scrim { opacity: 1; }
 .ai-sheet__panel {
   position: absolute; left: 0; right: 0; top: var(--vvt, 0px); height: var(--vvh, 100dvh);
   display: flex; flex-direction: column; margin-top: calc(var(--safe-t) + 14px); height: calc(var(--vvh, 100dvh) - var(--safe-t) - 14px);
-  background: var(--sheet-bg); border-radius: 26px 26px 0 0; border: 1px solid var(--line-strong); border-bottom: 0;
-  box-shadow: var(--pop-shadow);
+  background: var(--sheet-bg); border-radius: var(--r-xl) var(--r-xl) 0 0; border: 1px solid var(--line-strong); border-bottom: 0;
+  -webkit-backdrop-filter: saturate(170%) blur(var(--glass-blur)); backdrop-filter: saturate(170%) blur(var(--glass-blur));
+  box-shadow: var(--pop-shadow), inset 0 1px 0 var(--glass-hi);
   transform: translateY(104%); transition: transform 0.34s var(--ease);
   overflow: hidden; overscroll-behavior: contain;
 }
