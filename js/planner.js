@@ -31,6 +31,15 @@ export function initPlanner(DM) {
     return ui.selected === todayStr() ? 'Today' : fmtDay(ui.selected, { weekday: 'long', day: 'numeric', month: 'short' });
   };
 
+  const dayDiff = (a, b) => Math.round((parseDate(a) - parseDate(b)) / 86400000);
+  const subheading = () => {
+    const t = todayStr();
+    if (ui.mode === 'month') return ui.selected.slice(0, 7) === t.slice(0, 7) ? 'This month' : '';
+    if (ui.mode === 'week') { const w = Math.round(dayDiff(mondayOf(ui.selected), mondayOf(t)) / 7); return w === 0 ? 'This week' : w === 1 ? 'Next week' : w === -1 ? 'Last week' : ''; }
+    const d = dayDiff(ui.selected, t);
+    return d === 0 ? fmtDay(ui.selected, { weekday: 'long', day: 'numeric', month: 'long' }) : d === 1 ? 'Tomorrow' : d === -1 ? 'Yesterday' : d > 0 ? `In ${d} days` : `${-d} days ago`;
+  };
+
   /* ---------------- data ---------------- */
   function sources() {
     const out = [];
@@ -92,27 +101,28 @@ export function initPlanner(DM) {
     return `${od ? '<i class="pl-dot pl-dot--od"></i>' : ''}${t ? '<i class="pl-dot pl-dot--t"></i>' : ''}${e ? '<i class="pl-dot pl-dot--e"></i>' : ''}`;
   };
 
-  function rowHtml(r, today, now) {
+  function rowHtml(r, today, now, isNext = false) {
     const it = r.src, cat = catOf(it.category), over = isOverdue(r, today, now);
     const pri = r.type === 'task' && (it.priority === 'urgent' || it.priority === 'high') ? `<span class="pl-chip pl-chip--${it.priority}">${PRIORITY_LABEL[it.priority]}</span>` : '';
     const kindLbl = r.type === 'event' ? 'Appointment' : r.type === 'bill' ? 'Bill' : '';
     const checkable = r.type !== 'event';
     const edit = r.type === 'task' ? 'planner-edit-task' : 'planner-edit-reminder';
     return `
-      <li class="pl-row${r.done ? ' is-done' : ''}${over ? ' is-over' : ''}${r.projected ? ' is-proj' : ''}" data-id="${esc(it.id)}" data-col="${r.col}" data-date="${esc(it.date)}" data-cat="${esc(cat.key)}" ${r.projected ? '' : 'data-drag="1"'}>
-        <span class="pl-time">${it.time ? esc(it.time) : '<small>All day</small>'}</span>
+      <li class="pl-row${r.done ? ' is-done' : ''}${over ? ' is-over' : ''}${r.projected ? ' is-proj' : ''}${r.type === 'event' ? ' is-event' : ''}${isNext ? ' is-next' : ''}" data-id="${esc(it.id)}" data-col="${r.col}" data-date="${esc(it.date)}" data-cat="${esc(cat.key)}" ${r.projected ? '' : 'data-drag="1"'}>
+        <span class="pl-time">${it.time ? `<b>${esc(it.time)}</b>` : '<small>All day</small>'}</span>
         ${checkable && !r.projected
           ? `<button type="button" class="check" role="checkbox" aria-checked="${r.done}" data-action="planner-toggle" aria-label="${r.done ? 'Mark as not done' : 'Mark as done'}: ${esc(it.title)}">${icon('check')}</button>`
           : `<span class="pl-mark">${r.type === 'event' ? icon('calendar') : icon('repeat')}</span>`}
         <button type="button" class="pl-body" data-action="${edit}" aria-label="Edit: ${esc(it.title)}">
           <strong>${it.important ? '<span class="pl-star" aria-label="Important">★</span> ' : ''}${esc(it.title)}</strong>
           <span class="pl-meta">
-            ${over ? '<span class="pl-chip pl-chip--over">Overdue</span>' : ''}${pri}
+            ${isNext ? '<span class="pl-chip pl-chip--next">Next up</span>' : ''}${over ? '<span class="pl-chip pl-chip--over">Overdue</span>' : ''}${pri}
             <span class="pl-chip pl-chip--cat">${esc(cat.label)}</span>
             ${kindLbl ? `<span class="pl-sub">${kindLbl}</span>` : ''}
             ${it.repeat ? `<span class="pl-sub">${icon('repeat')} ${esc({ daily: 'Daily', weekly: 'Weekly', monthly: 'Monthly', yearly: 'Yearly' }[it.repeat])}</span>` : ''}
           </span>
         </button>
+        ${icon('chevron', 'pl-chev')}
         ${r.type === 'event' ? locHtml(it.location) : ''}
       </li>`;
   }
@@ -123,9 +133,20 @@ export function initPlanner(DM) {
     const overIds = new Set(showOver.map((o) => `${o.col}:${o.src.id}`));
     const body = rows.filter((r) => !overIds.has(`${r.col}:${r.src.id}`));
     const nice = fmtDay(day, { weekday: 'long', day: 'numeric', month: 'long' });
-    let html = `<h3 class="pl-h">${day === today ? 'Today · ' : ''}${esc(nice)}</h3>`;
+    const apps = body.filter((r) => r.type === 'event').length;
+    const bits = [plural(body.length + showOver.length, 'item', 'items')]; if (apps) bits.push(plural(apps, 'appointment', 'appointments'));
+    let html = `<h3 class="pl-h">${day === today ? 'Today · ' : ''}${esc(nice)}</h3>${body.length + showOver.length ? `<p class="pl-hsub">${esc(bits.join(' · '))}</p>` : ''}`;
     if (showOver.length) html += `<div class="pl-over"><p class="pl-over__t">${icon('clock')} ${plural(showOver.length, 'overdue item', 'overdue items')}</p><ul class="pl-list">${showOver.map((r) => rowHtml(r, today, now)).join('')}</ul></div>`;
-    if (body.length) html += `<ul class="pl-list">${body.map((r) => rowHtml(r, today, now)).join('')}</ul>`;
+    // Today: the next thing still to come gets a "Next up" marker.
+    const nextRow = day === today ? body.find((r) => !r.done && !r.projected && r.src.time && r.src.time >= now) : null;
+    const row = (r) => rowHtml(r, today, now, r === nextRow);
+    if (body.length >= 4) {
+      const bucket = (r) => !r.src.time ? 'All day' : r.src.time < '12:00' ? 'Morning' : r.src.time < '17:00' ? 'Afternoon' : 'Evening';
+      ['All day', 'Morning', 'Afternoon', 'Evening'].forEach((g) => {
+        const rs = body.filter((r) => bucket(r) === g);
+        if (rs.length) html += `<h4 class="pl-grp">${g}</h4><ul class="pl-list">${rs.map(row).join('')}</ul>`;
+      });
+    } else if (body.length) html += `<ul class="pl-list">${body.map(row).join('')}</ul>`;
     else if (!showOver.length) html += emptyState({ iconName: 'calendar', title: day < today ? 'Nothing was planned' : 'A clear day', text: day < today ? 'No tasks or appointments on this day.' : 'Nothing planned yet. Add a task or appointment for this day.' });
     return html;
   }
@@ -142,11 +163,13 @@ export function initPlanner(DM) {
       `<p class="pl-up__r"><span>${esc(s.src.title)}</span><b>${d === today ? 'Today' : d === addDays(today, 1) ? 'Tomorrow' : esc(fmtDay(d, { weekday: 'short', day: 'numeric', month: 'short' }))}</b></p>`).join('')}</section>`;
   }
 
+  const dayLabel = (d, rows) => { const n = rows.filter((r) => !r.done).length; return `${fmtDay(d, { weekday: 'long', day: 'numeric', month: 'long' })}${n ? `, ${plural(n, 'item', 'items')}` : ''}`; };
+
   function weekStrip(today, now, all) {
     const start = mondayOf(ui.selected);
     return `<div class="pl-week" role="group" aria-label="Week">${Array.from({ length: 7 }, (_, i) => {
       const d = addDays(start, i), rows = itemsOn(d, all);
-      return `<button type="button" class="pl-wd${d === ui.selected ? ' is-sel' : ''}${d === today ? ' is-today' : ''}" data-action="planner-pick" data-date="${d}" data-drop-date="${d}" aria-label="${esc(fmtDay(d, { weekday: 'long', day: 'numeric', month: 'long' }))}" aria-pressed="${d === ui.selected}">
+      return `<button type="button" class="pl-wd${d === ui.selected ? ' is-sel' : ''}${d === today ? ' is-today' : ''}" data-action="planner-pick" data-date="${d}" data-drop-date="${d}" aria-label="${esc(dayLabel(d, rows))}"${d === today ? ' aria-current="date"' : ''} aria-pressed="${d === ui.selected}">
         <small>${esc(fmtDay(d, { weekday: 'short' }))}</small><b>${parseDate(d).getDate()}</b><span class="pl-dots">${dotsFor(rows, today, now)}</span></button>`;
     }).join('')}</div>`;
   }
@@ -158,7 +181,7 @@ export function initPlanner(DM) {
     const heads = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => `<span class="pl-mh">${d}</span>`).join('');
     const cells = Array.from({ length: 42 }, (_, i) => {
       const d = addDays(start, i), rows = itemsOn(d, all), out = d.slice(0, 7) !== month;
-      return `<button type="button" class="pl-mc${out ? ' is-out' : ''}${d === ui.selected ? ' is-sel' : ''}${d === today ? ' is-today' : ''}" data-action="planner-pick" data-date="${d}" data-drop-date="${d}" aria-label="${esc(fmtDay(d, { weekday: 'long', day: 'numeric', month: 'long' }))}" aria-pressed="${d === ui.selected}">
+      return `<button type="button" class="pl-mc${out ? ' is-out' : ''}${d === ui.selected ? ' is-sel' : ''}${d === today ? ' is-today' : ''}" data-action="planner-pick" data-date="${d}" data-drop-date="${d}" aria-label="${esc(dayLabel(d, rows))}"${d === today ? ' aria-current="date"' : ''} aria-pressed="${d === ui.selected}">
         <b>${parseDate(d).getDate()}</b><span class="pl-dots">${dotsFor(rows, today, now)}</span></button>`;
     }).join('');
     return `<div class="pl-month" role="group" aria-label="Month">${heads}${cells}</div>`;
@@ -174,20 +197,24 @@ export function initPlanner(DM) {
 
     host.innerHTML = `
       <div class="pl">
-        <div class="pl-top">
+        <div class="card pl-head">
           <div class="pl-modes seg" role="tablist" aria-label="Calendar view">
             ${MODES.map((m) => `<button type="button" role="tab" class="pl-mode${m === ui.mode ? ' is-on' : ''}" aria-selected="${m === ui.mode}" data-action="planner-mode" data-mode="${m}">${m[0].toUpperCase() + m.slice(1)}</button>`).join('')}
           </div>
           <div class="pl-nav">
-            <button type="button" class="icon-btn" data-action="planner-prev" aria-label="Previous ${ui.mode}">‹</button>
-            <strong class="pl-title" aria-live="polite">${esc(heading())}</strong>
-            <button type="button" class="icon-btn" data-action="planner-next" aria-label="Next ${ui.mode}">›</button>
+            <button type="button" class="pl-arrow" data-action="planner-prev" aria-label="Previous ${ui.mode}">${icon('chevron', 'pl-arrow__ic pl-arrow__ic--prev')}</button>
+            <label class="pl-jump">
+              <strong class="pl-title" aria-live="polite">${esc(heading())}</strong>
+              ${subheading() ? `<span class="pl-subtitle">${esc(subheading())}</span>` : ''}
+              <input class="pl-jump__in" type="date" value="${esc(ui.selected)}" aria-label="Jump to a date">
+            </label>
+            <button type="button" class="pl-arrow" data-action="planner-next" aria-label="Next ${ui.mode}">${icon('chevron', 'pl-arrow__ic')}</button>
+          </div>
+          <div class="pl-stats">
+            <span class="pl-stat${od ? ' pl-stat--od' : ''}"><b>${od}</b> overdue</span>
+            <span class="pl-stat"><b>${nextWeek}</b> in the next 7 days</span>
             <button type="button" class="pl-today" data-action="planner-today"${ui.selected === today ? ' disabled' : ''}>Today</button>
           </div>
-        </div>
-        <div class="pl-stats">
-          <span class="pl-stat${od ? ' pl-stat--od' : ''}"><b>${od}</b> overdue</span>
-          <span class="pl-stat"><b>${nextWeek}</b> in the next 7 days</span>
         </div>
         <div class="pl-cats" role="group" aria-label="Filter by category">
           ${[{ key: 'all', label: 'All' }, ...CATEGORIES].map((c) => `<button type="button" class="chip${ui.filter === c.key ? ' is-on' : ''}" aria-pressed="${ui.filter === c.key}" data-action="planner-filter" data-cat="${c.key}">${esc(c.label)}</button>`).join('')}
@@ -313,6 +340,34 @@ export function initPlanner(DM) {
   // While a drag is active the page must not scroll.
   document.addEventListener('touchmove', (e) => { if (ui.drag && ui.drag.active && e.cancelable) e.preventDefault(); }, { passive: false });
   document.addEventListener('contextmenu', (e) => { if (ui.drag && ui.drag.active) e.preventDefault(); });
+
+  /* ---- date navigation: swipe, keyboard, jump-to-date ---- */
+  let sw = null;
+  document.addEventListener('touchstart', (e) => {
+    const t = e.touches[0], el = e.target;
+    sw = null;
+    if (e.touches.length !== 1 || ui.drag || !el.closest || !el.closest('#view-planner') || el.closest('.pl-cats, input, a, .pl-ghost') || t.clientX < 24) return;   // 24px: leave the iPhone back-swipe alone
+    sw = { x: t.clientX, y: t.clientY, at: Date.now() };
+  }, { passive: true });
+  document.addEventListener('touchend', (e) => {
+    const s = sw; sw = null;
+    if (!s || ui.suppressClick || (ui.drag && ui.drag.active) || !$('#view-planner') || $('#view-planner').hidden) return;
+    const t = e.changedTouches[0], dx = t.clientX - s.x, dy = t.clientY - s.y;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 40 && Date.now() - s.at < 700) step(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  document.addEventListener('keydown', (e) => {
+    const c = e.target.closest && e.target.closest('#view-planner .pl-wd, #view-planner .pl-mc');
+    if (!c) return;
+    const k = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 }[e.key];
+    if (!k || (ui.mode === 'week' && Math.abs(k) === 7)) return;
+    e.preventDefault(); ui.selected = addDays(c.dataset.date, k); redraw();
+    const n = $(`#view-planner [data-date="${ui.selected}"].pl-wd, #view-planner [data-date="${ui.selected}"].pl-mc`); if (n) n.focus();
+  });
+  document.addEventListener('change', (e) => {
+    const i = e.target;
+    if (!(i.matches && i.matches('#view-planner .pl-jump__in'))) return;
+    if (DM.helpers.isValidDate(i.value)) { ui.selected = i.value; redraw(); }
+  });
 
   try { rollEvents(); } catch (err) { console.warn('[DAYMATE] roll-forward failed:', err); }
   window.__daymatePlanner = { spawnNext, itemsOn };   // used by the tests
