@@ -33,7 +33,7 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.12.0',
+    version: '0.13.0',
     stage: 3,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
@@ -218,6 +218,7 @@
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
   };
   const nowISO = () => new Date().toISOString();
+  const SHOP_CAT_KEYS = ['produce', 'dairy', 'bakery', 'meat', 'frozen', 'pantry', 'drinks', 'household', 'health', 'other'];
   const cleanText = (s, max) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
   const cleanMultiline = (s, max) => String(s ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
 
@@ -365,7 +366,8 @@
           if (!i || typeof i !== 'object') return;
           const name = cleanText(i.name, 80);
           if (!name) return;
-          s.shopping.push({ id: id(i.id), name, checked: i.checked === true, createdAt: stamp(i.createdAt), updatedAt: stamp(i.updatedAt) });
+          const category = SHOP_CAT_KEYS.includes(i.category) ? i.category : 'other';
+          s.shopping.push({ id: id(i.id), name, quantity: cleanText(i.quantity, 30), category, checked: i.checked === true, createdAt: stamp(i.createdAt), updatedAt: stamp(i.updatedAt) });
         });
       }
       if (Array.isArray(raw.memories)) {
@@ -1237,6 +1239,7 @@
   /* ---- Premium screen ---- */
   let premiumRenderer = null;
   let moreRenderer = null;
+  let shopUI = null;      // { list(items), add(event) } supplied by js/shopping.js; the plain list below is the fallback
   function renderPremium() { if (premiumRenderer) premiumRenderer(); }
 
   function openPremium(featureId) {
@@ -1421,6 +1424,7 @@
     const left = items.filter((i) => !i.checked).length;
     $('#shoppingCount').textContent = !items.length ? 'Nothing on your list yet' : left === 0 ? 'Everything’s ticked off' : `${left} to buy`;
     $('#shoppingClear').hidden = !items.some((i) => i.checked);
+    if (shopUI && items.length) { try { $('#shoppingList').innerHTML = shopUI.list(items); return; } catch (err) { console.error('[DAYMATE] Shopping list view failed, using the plain list:', err); } }
     $('#shoppingList').innerHTML = items.length ? items.map((i) => {
       const isNew = !ui.seen.has(`s-${i.id}`);
       ui.seen.add(`s-${i.id}`);
@@ -1444,6 +1448,7 @@
 
   function addShoppingItem(e) {
     e.preventDefault();
+    if (shopUI && shopUI.add) { try { if (shopUI.add(e) !== false) return; } catch (err) { console.error('[DAYMATE] Shopping add failed, using the plain add:', err); } }
     const input = $('#shoppingInput');
     const name = cleanText(input.value, 80);
     if (!name) { input.classList.remove('is-invalid'); void input.offsetWidth; input.classList.add('is-invalid'); input.focus(); return; }
@@ -1801,6 +1806,7 @@
       views: { upcomingItems, isReminderOverdue, openPremium, openTaskSheet, openReminderSheet, renderAll },
       setPremiumRenderer(fn) { premiumRenderer = fn; },
       setMoreRenderer(fn) { moreRenderer = fn; },
+      setShoppingUI(o) { shopUI = o; },
       moreInfo,
       registerRoute(name, cfg) { extraRoutes[name] = cfg; if (ui.route === name) renderAll(); },
       registerActions(map) { Object.assign(actions, map); },

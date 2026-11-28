@@ -11,6 +11,7 @@ import { initTheme } from './theme.js';
 import { initDashboard } from './dashboard.js';
 import { initWeather } from './weather.js';
 import { initSettingsHub } from './settings.js';
+import { initShopping } from './shopping.js';
 
 const ready = () => (window.DAYMATE ? Promise.resolve(window.DAYMATE)
   : new Promise((resolve) => window.addEventListener('daymate:ready', () => resolve(window.DAYMATE), { once: true })));
@@ -27,5 +28,6 @@ ready().then((DM) => {
   try { initNotifications(DM); } catch (err) { console.error('[DAYMATE] Notifications failed to start:', err); }
   try { initConsent(DM); } catch (err) { console.error('[DAYMATE] Privacy choices failed to start:', err); }
   try { initSettingsHub(DM); } catch (err) { console.error('[DAYMATE] Settings hub failed to start:', err); }
+  try { initShopping(DM); } catch (err) { console.error('[DAYMATE] Shopping upgrade failed to start:', err); }
   try { initAuth(DM); } catch (err) { console.error('[DAYMATE] Accounts failed to start:', err); }
 }).catch((err) => console.error('[DAYMATE] Part 2 failed to start:', err));

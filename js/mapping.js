@@ -48,7 +48,7 @@ export function toRow(col, item, userId) {
         remind_date: item.date, remind_time: orNull(item.time), note: item.note || '', location: orNull(item.location), done: !!item.done,
         category_tag: item.category || 'personal', repeat_rule: item.repeat || '', important: !!item.important, ...stamps };
     case 'shopping':
-      return { ...base, name: item.name, checked: !!item.checked, ...stamps };
+      return { ...base, name: item.name, category: item.category || 'other', quantity: item.quantity || '', checked: !!item.checked, ...stamps };
     case 'memories':
       return { ...base, category: item.category, title: item.title || '', content: item.content,
         source: item.source === 'ai' ? 'ai' : 'manual', sensitive: !!item.sensitive, ...stamps };
@@ -74,7 +74,7 @@ export function fromRow(tbl, row) {
         note: row.note || '', location: row.location || '', done: !!row.done, tbl: 'reminders',
         category: row.category_tag || (row.category === 'bill' ? 'bills' : 'personal'), repeat: row.repeat_rule || '', important: !!row.important };
     case 'shopping_items':
-      return { ...common, name: row.name, checked: !!row.checked };
+      return { ...common, name: row.name, category: row.category || 'other', quantity: row.quantity || '', checked: !!row.checked };
     case 'memories':
       return { ...common, category: row.category, title: row.title || '', content: row.content, source: row.source === 'ai' ? 'ai' : 'manual', sensitive: !!row.sensitive };
     case 'notifications':

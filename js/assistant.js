@@ -13,6 +13,7 @@
    • Chats are saved to the account (Settings → delete any time).
    ========================================================================== */
 import { session } from './session.js';
+import { parseItem } from './shopping-logic.js';
 
 const DONE_KEY = 'daymate:aiDone';
 const KINDS = { task: 'Task', event: 'Appointment', reminder: 'Reminder', bill: 'Bill', shopping: 'Shopping' };
@@ -189,10 +190,11 @@ export function initAssistant(DM) {
       const have = new Set(Store.state.shopping.filter((x) => !x.checked).map((x) => x.name.toLowerCase()));
       const made = [];
       (p.items || []).forEach((n) => {
-        const name = cleanText(n, 60);
+        const it = parseItem(cleanText(n, 80));
+        const name = it.name.slice(0, 60);
         if (!name || have.has(name.toLowerCase())) return;
         have.add(name.toLowerCase());
-        made.push(Store.add('shopping', { name, checked: false }).id);
+        made.push(Store.add('shopping', { name, quantity: it.quantity, category: it.category, checked: false }).id);
       });
       if (!made.length) return { ok: true, text: 'Already on your shopping list' };
       return { ok: true, text: `Added ${plural(made.length, 'item', 'items')} to your shopping list`, undo: () => made.forEach((id) => Store.remove('shopping', id)) };
