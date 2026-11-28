@@ -12,7 +12,7 @@
    ========================================================================== */
 import { isUuid, fingerprint, tableFor } from './mapping.js';
 
-const COLS = ['tasks', 'reminders', 'shopping', 'memories', 'notifications'];
+const COLS = ['tasks', 'reminders', 'shopping', 'household', 'memories', 'notifications'];
 const BACKUP_KEY = 'daymate:premigration-backup';
 
 const countOf = (s) => COLS.reduce((n, c) => n + s[c].length, 0);

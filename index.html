@@ -406,6 +406,47 @@
     </section>
   </div>
 
+  <!-- Household: note / key date / chore -->
+  <div class="modal" id="m-household" hidden>
+    <div class="modal__scrim" data-action="close-modal"></div>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="hhSheetTitle">
+      <div class="sheet__head">
+        <span class="sheet__grab" aria-hidden="true"></span>
+        <div class="sheet__titlebar">
+          <h2 id="hhSheetTitle">New chore</h2>
+          <button type="button" class="icon-btn" data-action="close-modal" aria-label="Close"><svg class="icon"><use href="#i-x"/></svg></button>
+        </div>
+      </div>
+      <form class="sheet__form" id="hhForm" novalidate>
+        <div class="sheet__scroll">
+          <div class="field">
+            <label class="field__label" for="hhTitle" id="hhTitleLabel">Chore</label>
+            <input class="input" id="hhTitle" type="text" maxlength="80" autocomplete="off" enterkeyhint="next">
+            <p class="field__error" id="hhTitleError" role="alert"></p>
+          </div>
+          <div class="field" id="hhDateField">
+            <label class="field__label" for="hhDate" id="hhDateLabel">Date</label>
+            <input class="input" id="hhDate" type="date">
+            <p class="field__error" id="hhDateError" role="alert"></p>
+          </div>
+          <div class="field" id="hhRepeatField">
+            <label class="field__label" for="hhRepeat" id="hhRepeatLabel">Repeat</label>
+            <select class="input" id="hhRepeat"></select>
+          </div>
+          <div class="field">
+            <label class="field__label" for="hhText" id="hhTextLabel">Details (optional)</label>
+            <textarea class="input" id="hhText" rows="4" maxlength="500"></textarea>
+            <p class="field__hint" id="hhTextHint"></p>
+          </div>
+        </div>
+        <div class="sheet__actions">
+          <button type="button" class="btn btn--danger" id="hhDelete" data-action="hh-delete" hidden>Delete</button>
+          <button type="submit" class="btn btn--primary" id="hhSave">Save</button>
+        </div>
+      </form>
+    </section>
+  </div>
+
   <!-- Shopping list -->
   <div class="modal" id="m-shopping" hidden>
     <div class="modal__scrim" data-action="close-modal"></div>

@@ -11,15 +11,17 @@ export const isUuid = (v) => typeof v === 'string' && UUID_RE.test(v);
 
 const hm = (t) => (typeof t === 'string' && t ? t.slice(0, 5) : '');
 const orNull = (v) => (v ? v : null);
+import { KINDS, encode, decode, normalise } from './household-logic.js';
 const iso = (v) => { const d = new Date(v); return Number.isNaN(d.getTime()) ? '' : d.toISOString(); };
 
-export const SYNC_COLLECTIONS = ['tasks', 'reminders', 'shopping', 'memories', 'notifications'];
+export const SYNC_COLLECTIONS = ['tasks', 'reminders', 'shopping', 'household', 'memories', 'notifications'];
 
 export function tableFor(col, item) {
   switch (col) {
     case 'tasks': return 'tasks';
     case 'reminders': return item && item.kind === 'event' ? 'appointments' : 'reminders';
     case 'shopping': return 'shopping_items';
+    case 'household': return 'household_info';
     case 'memories': return 'memories';
     case 'notifications': return 'notifications';
     default: throw new Error(`Unknown collection ${col}`);
@@ -27,7 +29,7 @@ export function tableFor(col, item) {
 }
 
 export function colFor(tbl) {
-  const c = { tasks: 'tasks', appointments: 'reminders', reminders: 'reminders', shopping_items: 'shopping', memories: 'memories', notifications: 'notifications' }[tbl];
+  const c = { tasks: 'tasks', appointments: 'reminders', reminders: 'reminders', shopping_items: 'shopping', household_info: 'household', memories: 'memories', notifications: 'notifications' }[tbl];
   if (!c) throw new Error(`Unknown table ${tbl}`);
   return c;
 }
@@ -49,6 +51,8 @@ export function toRow(col, item, userId) {
         category_tag: item.category || 'personal', repeat_rule: item.repeat || '', important: !!item.important, ...stamps };
     case 'shopping':
       return { ...base, name: item.name, category: item.category || 'other', quantity: item.quantity || '', checked: !!item.checked, ...stamps };
+    case 'household':
+      return { ...base, label: item.title, category: item.kind, value: encode(item), ...stamps };
     case 'memories':
       return { ...base, category: item.category, title: item.title || '', content: item.content,
         source: item.source === 'ai' ? 'ai' : 'manual', sensitive: !!item.sensitive, ...stamps };
@@ -75,6 +79,11 @@ export function fromRow(tbl, row) {
         category: row.category_tag || (row.category === 'bill' ? 'bills' : 'personal'), repeat: row.repeat_rule || '', important: !!row.important };
     case 'shopping_items':
       return { ...common, name: row.name, category: row.category || 'other', quantity: row.quantity || '', checked: !!row.checked };
+    case 'household_info': {
+      const kind = KINDS.includes(row.category) ? row.category : 'note';
+      const rec = normalise({ kind, title: row.label, ...decode(kind, row.value || '') }) || { kind: 'note', title: String(row.label || '').slice(0, 80) || 'Note', text: String(row.value || '').slice(0, 500) };
+      return { ...common, ...rec };
+    }
     case 'memories':
       return { ...common, category: row.category, title: row.title || '', content: row.content, source: row.source === 'ai' ? 'ai' : 'manual', sensitive: !!row.sensitive };
     case 'notifications':
@@ -97,6 +106,7 @@ export function fingerprint(col, item) {
     case 'tasks': return `t|${n(item.title)}|${item.date}|${item.time || ''}`;
     case 'reminders': return `r|${item.kind}|${n(item.title)}|${item.date}|${item.time || ''}`;
     case 'shopping': return `s|${n(item.name)}`;
+    case 'household': return `h|${item.kind}|${n(item.title)}|${item.date || ''}`;
     case 'memories': return `m|${item.category}|${n(item.content)}`;
     case 'notifications': return `n|${item.dedupeKey}`;
     default: return `${col}|${item.id}`;

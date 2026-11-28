@@ -33,7 +33,7 @@
   const APP = {
     name: 'DAYMATE',
     tagline: 'Your Life, Better Organised.',
-    version: '0.13.0',
+    version: '0.14.0',
     stage: 3,
     storageKey: 'daymate:v1',          // anonymous / signed-out data (unchanged from Part 1)
     userKeyPrefix: 'daymate:u:',       // per-user cache once signed in
@@ -175,7 +175,7 @@
   ];
   const MEMORY_KEYS = MEMORY_CATEGORIES.map((c) => c.key);
   const NOTIF_TYPES = ['task', 'appointment', 'reminder', 'bill', 'missed', 'summary', 'system'];
-  const COLLECTIONS = ['tasks', 'reminders', 'shopping', 'memories', 'notifications'];
+  const COLLECTIONS = ['tasks', 'reminders', 'shopping', 'household', 'memories', 'notifications'];
   const REMINDER_KINDS = ['reminder', 'event', 'bill'];
 
   /* ======================================================================
@@ -275,7 +275,7 @@
     let tracking = false;               // true while signed in: record dirty ids + tombstones for sync
     const subs = new Set();
 
-    function emptySync() { return { dirty: { tasks: [], reminders: [], shopping: [], memories: [], notifications: [] }, tombstones: [], settingsDirty: false }; }
+    function emptySync() { return { dirty: { tasks: [], reminders: [], shopping: [], household: [], memories: [], notifications: [] }, tombstones: [], settingsDirty: false }; }
 
     function blank() {
       return {
@@ -284,6 +284,7 @@
         tasks: [],
         reminders: [],
         shopping: [],
+        household: [],
         memories: [],
         notifications: [],
         sync: emptySync(),
@@ -359,6 +360,21 @@
             tbl: r.tbl === 'appointments' || r.tbl === 'reminders' ? r.tbl : '',   // which cloud table currently holds it
             createdAt: stamp(r.createdAt), updatedAt: stamp(r.updatedAt),
           });
+        });
+      }
+      if (Array.isArray(raw.household)) {
+        const every = ['', 'daily', 'weekly', 'fortnightly', 'monthly'];
+        raw.household.forEach((h) => {
+          if (!h || typeof h !== 'object' || !['note', 'date', 'chore'].includes(h.kind)) return;
+          const title = cleanText(h.title, 80);
+          if (!title) return;
+          const rec = { id: id(h.id), kind: h.kind, title, text: cleanMultiline(h.text, h.kind === 'note' ? 500 : 300), createdAt: stamp(h.createdAt), updatedAt: stamp(h.updatedAt) };
+          if (h.kind === 'date') { if (!isValidDate(h.date)) return; rec.date = h.date; rec.repeat = ['yearly', 'monthly'].includes(h.repeat) ? h.repeat : ''; }
+          if (h.kind === 'chore') {
+            rec.every = every.includes(h.every) ? h.every : '';
+            rec.due = isValidDate(h.due) ? h.due : ''; rec.lastDone = isValidDate(h.lastDone) ? h.lastDone : ''; rec.done = h.done === true && !rec.every;
+          }
+          s.household.push(rec);
         });
       }
       if (Array.isArray(raw.shopping)) {
@@ -1494,8 +1510,8 @@
     const yes = await confirmDialog({
       title: 'Erase all data?',
       message: Account.user
-        ? 'This permanently removes every task, reminder, shopping item, memory and notification from this device AND from your DAYMATE account. It can’t be undone.'
-        : 'This permanently removes every task, reminder, shopping item and memory stored on this device. It can’t be undone.',
+        ? 'This permanently removes every task, reminder, shopping item, household note, date and chore, memory and notification from this device AND from your DAYMATE account. It can’t be undone.'
+        : 'This permanently removes every task, reminder, shopping item, household note, date, chore and memory stored on this device. It can’t be undone.',
       okLabel: 'Erase everything',
     });
     if (!yes) return;
