@@ -62,7 +62,7 @@ export function initDashboard(DM) {
     const done = all.length - left.length;
     const pct = all.length ? Math.round((done / all.length) * 100) : 0;
     const body = left.length
-      ? `<ul class="shopmini">${left.slice(0, 4).map((i) => `<li>${icon('basket')}<span>${esc(i.name)}</span></li>`).join('')}</ul>
+      ? `<ul class="shopmini">${left.slice(0, 4).map((i) => `<li>${icon('basket')}<span>${esc(i.name)}</span>${i.quantity ? `<em class="shopmini__qty">${esc(i.quantity)}</em>` : ''}</li>`).join('')}</ul>
          ${left.length > 4 ? `<p class="shopmini__more">+ ${plural(left.length - 4, 'more item', 'more items')}</p>` : ''}
          <div class="shopmini__bar" role="img" aria-label="${pct}% ticked off"><i style="width:${pct}%"></i></div>`
       : `<p class="shopmini__empty">${all.length ? 'Everything’s ticked off. Nice.' : 'Your list is empty. Say “add milk and bread to my shopping list” to Daymate AI.'}</p>`;
