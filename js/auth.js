@@ -176,7 +176,7 @@ export function initAuth(DM) {
   }
 
   async function deleteAccount() {
-    const yes = await confirmDialog({ title: 'Delete your account?', message: 'This permanently deletes your DAYMATE account and everything saved in it: tasks, reminders, shopping, memories and notifications. It can’t be undone.', okLabel: 'Delete everything' });
+    const yes = await confirmDialog({ title: 'Delete your account?', message: 'This permanently deletes your DAYMATE account and everything saved in it: tasks, reminders, shopping, household notes, dates and chores, memories and notifications. It can’t be undone.', okLabel: 'Delete everything' });
     if (!yes) return;
     try {
       const { error } = await session.client.functions.invoke('delete-account', { body: {} });
@@ -200,7 +200,7 @@ export function initAuth(DM) {
     if (!force && safeLS.get(skipKey(session.user.id)) === found.fingerprint) return;
     const c = found.counts;
     const parts = [c.tasks && plural(c.tasks, 'task', 'tasks'), c.reminders && plural(c.reminders, 'reminder or appointment', 'reminders and appointments'),
-      c.shopping && plural(c.shopping, 'shopping item', 'shopping items'), c.memories && plural(c.memories, 'memory', 'memories')].filter(Boolean);
+      c.shopping && plural(c.shopping, 'shopping item', 'shopping items'), c.household && plural(c.household, 'household note, date or chore', 'household notes, dates and chores'), c.memories && plural(c.memories, 'memory', 'memories')].filter(Boolean);
     $('#migrateList').innerHTML = parts.length ? parts.map((p) => `<li>${esc(p)}</li>`).join('') : '<li>Your name and settings</li>';
     setMigrateView('ask');
     Modal.open('m-migrate');

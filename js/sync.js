@@ -13,7 +13,7 @@ import { SYNC_COLLECTIONS, tableFor, colFor, toRow, fromRow, stampOf, settingsTo
 
 const OVERLAP_MS = 2 * 60 * 1000;
 const PAGE = 500;
-const PULL_TABLES = ['tasks', 'appointments', 'reminders', 'shopping_items', 'memories'];
+const PULL_TABLES = ['tasks', 'appointments', 'reminders', 'shopping_items', 'household_info', 'memories'];
 const PRIVATE_TEXT_COLS = new Set(['memories']);   // wipe content when deleting
 
 const isNetworkError = (err) => !navigator.onLine || /failed to fetch|networkerror|load failed|network request failed/i.test(String(err && err.message));

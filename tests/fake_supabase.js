@@ -2,7 +2,7 @@
 // real database enforces (per-user filtering, stale-write guard, synced_at stamping, dedupe keys).
 window.makeFakeBackend = () => {
   const tables = {};
-  ['tasks', 'appointments', 'reminders', 'shopping_items', 'memories', 'notifications'].forEach((t) => { tables[t] = []; });
+  ['tasks', 'appointments', 'reminders', 'shopping_items', 'household_info', 'memories', 'notifications'].forEach((t) => { tables[t] = []; });
   const settings = { profiles: [], user_preferences: [], notification_preferences: [], entitlements: [] };
   let tick = Date.parse('2030-01-01T00:00:00Z');
   const stamp = () => new Date((tick += 1000)).toISOString();
